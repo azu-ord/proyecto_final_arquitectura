@@ -30,7 +30,7 @@ rds:
 etl:
   raw_files:
     logistics:  "data/raw/logistics_dataset_with_maintenance_required.csv"
-    service:    "data/raw/final dataset  for kaggle.csv"
+    service:    "data/raw/services_and_repair.csv"
 
   expected_columns:
     logistics:
