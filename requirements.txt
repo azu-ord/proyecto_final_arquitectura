@@ -19,8 +19,11 @@ plotly==5.22.0
 matplotlib==3.8.4   
 
 # App
-streamlit==1.35.0    
-great-tables==0.8.0  
+streamlit==1.35.0
+great-tables==0.8.0
+
+# Agent
+strands-agents>=0.1.0
 
 # Modelado
 scikit-learn==1.4.2 
