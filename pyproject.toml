@@ -1,0 +1,13 @@
+[project]
+name = "examen-parcial-arquitectura-datos"
+version = "0.1.0"
+description = "Examen parcial - Arquitectura de Datos"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "great-tables>=0.8.0",
+    "streamlit>=1.56.0",
+    "scikit-learn>=1.5.0",
+    "xgboost>=2.1.0",
+    "statsforecast>=1.7.4"
+]
