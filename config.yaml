@@ -86,7 +86,6 @@ modeling:
   features:
     numeric:
       - Usage_Hours
-      - Engine_Temperature
       - Tire_Pressure
       - Fuel_Consumption
       - Battery_Status
