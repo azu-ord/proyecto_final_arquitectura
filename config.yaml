@@ -1,0 +1,120 @@
+main:
+  project_name: "auto-repair-shop"
+  version: "0.1.0"
+  data_sources:
+    - "kaggle/logistics-vehicle-maintenance-history"
+    - "kaggle/vehicle-service-and-repair"
+
+aws:
+  s3_bucket: "itam-final-azucena"
+  region: "us-east-1"
+
+  s3_paths:
+    bronze: "auto-repair-shop/bronze"
+    silver: "auto-repair-shop/silver"
+    gold:   "auto-repair-shop/gold"
+    models: "auto-repair-shop/models"
+
+  secret_name: "itam/rds/auto-repair-shop/credentials"  # pendiente
+
+rds:
+  db_name: "auto-repair-shop_db"
+  port: 5432
+  host: "TBD"   # pendiente
+  tables:
+    - vehicles
+    - service_catalog
+    - maintenance_records
+    - risk_scores
+
+etl:
+  raw_files:
+    logistics:  "data/raw/logistics_dataset_with_maintenance_required.csv"
+    service:    "data/raw/final dataset  for kaggle.csv"
+
+  expected_columns:
+    logistics:
+      - Vehicle_ID
+      - Make_and_Model
+      - Year_of_Manufacture
+      - Vehicle_Type
+      - Usage_Hours
+      - Route_Info
+      - Load_Capacity
+      - Actual_Load
+      - Last_Maintenance_Date
+      - Maintenance_Type
+      - Maintenance_Cost
+      - Engine_Temperature
+      - Tire_Pressure
+      - Fuel_Consumption
+      - Battery_Status
+      - Vibration_Levels
+      - Oil_Quality
+      - Brake_Condition
+      - Failure_History
+      - Anomalies_Detected
+      - Predictive_Score
+      - Maintenance_Required
+      - Weather_Conditions
+      - Road_Conditions
+      - Delivery_Times
+      - Downtime_Maintenance
+      - Impact_on_Efficiency
+    service:
+      - CUSTOMER ID
+      - SERVICE HISTORY
+      - COMMON PROBLEM
+      - SOLUTION USED
+      - VEHICAL COMPANY
+
+  validation:
+    usage_hours_min: 0
+    usage_hours_max: 50000
+    engine_temp_min: 50.0
+    engine_temp_max: 200.0
+    tire_pressure_min: 10.0
+    tire_pressure_max: 100.0
+    maintenance_cost_min: 0.0
+    maintenance_cost_max: 10000.0
+
+modeling:
+  target_col: "Maintenance_Required"
+  random_seed: 42
+  test_size: 0.2
+
+  features:
+    numeric:
+      - Usage_Hours
+      - Engine_Temperature
+      - Tire_Pressure
+      - Fuel_Consumption
+      - Battery_Status
+      - Vibration_Levels
+      - Maintenance_Cost
+      - Failure_History
+      - Anomalies_Detected
+      - Predictive_Score
+      - Delivery_Times
+      - Downtime_Maintenance
+      - Impact_on_Efficiency
+      - days_since_maintenance   # feature engineering en NB02
+      - load_ratio               # Actual_Load / Load_Capacity
+    categorical:
+      - Vehicle_Type
+      - Route_Info
+      - Oil_Quality
+      - Brake_Condition
+      - Weather_Conditions
+      - Road_Conditions
+
+  xgboost:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+
+  accuracy_threshold: 0.80   # mínimo para aprobar el modelo
+
+  model_artifact: "model_xgb.pkl"
