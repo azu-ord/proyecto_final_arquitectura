@@ -22,7 +22,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 def _settings() -> dict:
     """Retorna host_primary, host_replica, secret_name y region."""
     # ── Desde variables de entorno (contenedor ECS) ──
-    if os.environ.get("DB_HOST_PRIMARY"):
+    if os.environ.get("DB_HOST_PRIMARY") and os.environ.get("SECRET_NAME"):
         return {
             "host_primary":  os.environ["DB_HOST_PRIMARY"],
             "host_replica":  os.environ.get("DB_HOST_REPLICA", ""),

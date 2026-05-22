@@ -57,22 +57,27 @@ with tab_gerente:
             <div class="kpi-card">
                 <div class="kpi-label">🚛 Flota total</div>
                 <div class="kpi-value">{total_veh}</div>
-                <div class="kpi-sub">{available} disponibles · {total_veh - available} requieren servicio</div>
+                <div class="kpi-sub">{avail_pct}% operativa</div>
             </div>
             <div class="kpi-card danger">
                 <div class="kpi-label">🔴 Zona roja</div>
                 <div class="kpi-value">{red_zone}</div>
                 <div class="kpi-sub">Riesgo alto — requieren atención</div>
             </div>
+            <div class="kpi-card success">
+                <div class="kpi-label">✅ Disponibles</div>
+                <div class="kpi-value">{available:,}</div>
+                <div class="kpi-sub">Sin requerir mantenimiento</div>
+            </div>
+            <div class="kpi-card warning">
+                <div class="kpi-label">🔧 Requieren servicio</div>
+                <div class="kpi-value">{total_veh - available:,}</div>
+                <div class="kpi-sub">Con mantenimiento pendiente</div>
+            </div>
             <div class="kpi-card warning">
                 <div class="kpi-label">💰 Costo acumulado</div>
                 <div class="kpi-value">${total_cost:,.0f}</div>
                 <div class="kpi-sub">MXN · mantenimiento total de flota</div>
-            </div>
-            <div class="kpi-card success">
-                <div class="kpi-label">✅ Disponibilidad</div>
-                <div class="kpi-value">{avail_pct}%</div>
-                <div class="kpi-sub">Sin requerir mantenimiento</div>
             </div>
         </div>
         """,
@@ -129,7 +134,7 @@ with tab_gerente:
         df_red = (
             df_v[df_v["risk_level"] == "Alto"]
             .sort_values("risk_score", ascending=False)
-            [["plate", "type", "risk_score", "total_maintenance_cost"]]
+            [["plate", "make_and_model", "type", "risk_score", "total_maintenance_cost"]]
         )
         st.markdown(
             f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
@@ -432,6 +437,7 @@ with tab_mecanico:
                             f"{d.get('mechanic', '')}"
                         )
                         from sqlalchemy import text as _text
+                        _error_msg = None
                         try:
                             with get_write_engine().begin() as _conn:
                                 _conn.execute(
@@ -452,11 +458,26 @@ with tab_mecanico:
                                         "cost":     float(d.get("cost", 0)),
                                     },
                                 )
+                                result = _conn.execute(
+                                    _text("""
+                                        UPDATE risk_scores
+                                        SET    maintenance_required = FALSE
+                                        WHERE  maintenance_required = TRUE
+                                          AND  vehicle_id = (
+                                            SELECT vehicle_id FROM vehicles WHERE plate = :plate
+                                        )
+                                    """),
+                                    {"plate": d.get("plate")},
+                                )
+                                _ = result.rowcount  # filas afectadas (0 = ya estaba en FALSE)
                             st.session_state.mec_submitted = True
                             get_fleet_data.clear()
                         except Exception as _e:
-                            st.error(f"Error al guardar en RDS: {_e}")
-                        st.rerun()
+                            _error_msg = str(_e)
+                        if _error_msg:
+                            st.error(f"Error al guardar en RDS: {_error_msg}")
+                        else:
+                            st.rerun()
                 with col_edit:
                     if st.button("✏️ Editar respuestas", use_container_width=True):
                         st.session_state.mec_step = 0
