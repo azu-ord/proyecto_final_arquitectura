@@ -134,7 +134,7 @@ with tab_gerente:
         df_red = (
             df_v[df_v["risk_level"] == "Alto"]
             .sort_values("risk_score", ascending=False)
-            [["plate", "make_and_model", "type", "risk_score", "total_maintenance_cost"]]
+            [["plate", "make_and_model", "risk_score", "total_maintenance_cost"]]
         )
         st.markdown(
             f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
@@ -152,7 +152,7 @@ with tab_gerente:
                 height=380,
                 column_config={
                     "plate":                  st.column_config.TextColumn("Placa"),
-                    "type":                   st.column_config.TextColumn("Tipo"),
+                    "make_and_model":         st.column_config.TextColumn("Modelo"),
                     "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
                     "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
                 },
