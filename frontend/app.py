@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from datetime import date
 
 from config import define_styles_app, render_header
-from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics
+from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics, get_distribution_centers
 from db import get_write_engine
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -99,36 +99,84 @@ with tab_gerente:
         unsafe_allow_html=True,
     )
 
+    # Filtro por centro de distribución
+    centers = ["Todos los CEDIS"] + get_distribution_centers()
+    sel_center = st.selectbox("Centro de distribución", centers, key="map_center_filter")
+
+    df_map = df_v if sel_center == "Todos los CEDIS" else df_v[df_v["center_name"] == sel_center]
+
+    # Centrado dinámico según CEDIS seleccionado
+    if sel_center == "Todos los CEDIS" or df_map.empty:
+        map_center = {"lat": 19.40, "lon": -99.15}
+        map_zoom   = 9.5
+    else:
+        map_center = {"lat": df_map["lat"].mean(), "lon": df_map["lng"].mean()}
+        map_zoom   = 11
+
     col_map, col_red = st.columns([3, 2], gap="medium")
 
     with col_map:
-        fig_map = px.scatter_mapbox(
-            df_v,
-            lat="lat",
-            lon="lng",
-            color="risk_level",
-            color_discrete_map=RISK_COLORS,
-            size="risk_score",
-            size_max=20,
-            hover_name="plate",
-            hover_data={
-                "type":       True,
-                "brand":      True,
-                "risk_score": True,
-                "lat":        False,
-                "lng":        False,
-                "risk_level": False,
-            },
-            zoom=9.5,
-            center={"lat": 19.40, "lon": -99.15},
-            mapbox_style="open-street-map",
-            labels={"risk_level": "Riesgo"},
-            category_orders={"risk_level": ["Alto", "Medio", "Bajo"]},
+        def _emoji(vtype):
+            vt = str(vtype).lower() if pd.notna(vtype) else ""
+            if any(k in vt for k in ("truck", "camion", "camión", "semi", "trailer")):
+                return "🚛"
+            if any(k in vt for k in ("van", "furgon", "furgón", "pickup")):
+                return "🚐"
+            return "🚗"
+
+        df_map_plot = df_map.dropna(subset=["lat", "lng"]).copy()
+
+        # Un marcador por CEDIS — vehículo con mayor score al hover
+        df_top = (
+            df_map_plot
+            .sort_values("risk_score", ascending=False)
+            .groupby("center_name", as_index=False)
+            .first()
         )
+        df_cedis_agg = (
+            df_map_plot
+            .groupby("center_name", as_index=False)
+            .agg(vehicle_count=("vehicle_id", "count"),
+                 high_risk=("risk_level", lambda x: (x == "Alto").sum()))
+        )
+        df_cedis = df_top.merge(df_cedis_agg, on="center_name")
+        df_cedis["_emoji"] = df_cedis["type"].apply(_emoji)
+
+        fig_map = go.Figure()
+        for risk_level in ["Alto", "Medio", "Bajo"]:
+            df_r = df_cedis[df_cedis["risk_level"] == risk_level]
+            if df_r.empty:
+                continue
+            fig_map.add_trace(go.Scattermapbox(
+                lat=df_r["lat"],
+                lon=df_r["lng"],
+                mode="markers+text",
+                marker=dict(size=40, color=RISK_COLORS[risk_level], opacity=0.75),
+                text=df_r["_emoji"],
+                textposition="middle center",
+                textfont=dict(size=22),
+                name=risk_level,
+                customdata=df_r[[
+                    "center_name", "vehicle_count", "high_risk",
+                    "plate", "risk_score", "brand", "type",
+                ]].values,
+                hovertemplate=(
+                    "<b>📍 %{customdata[0]}</b><br>"
+                    "Vehículos: %{customdata[1]}  |  Riesgo alto: %{customdata[2]}<br>"
+                    "──────────────────────<br>"
+                    "Mayor riesgo: <b>%{customdata[3]}</b><br>"
+                    "Score: %{customdata[4]:.1f}  ·  %{customdata[5]}  %{customdata[6]}<br>"
+                    "<extra></extra>"
+                ),
+            ))
+
         fig_map.update_layout(
+            mapbox_style="open-street-map",
+            mapbox=dict(center=map_center, zoom=map_zoom),
             height=400,
             margin=dict(l=0, r=0, t=5, b=5),
             legend=dict(
+                title_text="Riesgo",
                 orientation="h",
                 yanchor="top",
                 y=-0.06,
@@ -141,9 +189,9 @@ with tab_gerente:
 
     with col_red:
         df_red = (
-            df_v[df_v["risk_level"] == "Alto"]
+            df_map[df_map["risk_level"] == "Alto"]
             .sort_values("risk_score", ascending=False)
-            [["plate", "make_and_model", "risk_score", "total_maintenance_cost"]]
+            [["plate", "make_and_model", "center_name", "risk_score", "total_maintenance_cost"]]
         )
         st.markdown(
             f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
@@ -162,6 +210,7 @@ with tab_gerente:
                 column_config={
                     "plate":                  st.column_config.TextColumn("Placa"),
                     "make_and_model":         st.column_config.TextColumn("Modelo"),
+                    "center_name":            st.column_config.TextColumn("CEDIS"),
                     "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
                     "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
                 },
