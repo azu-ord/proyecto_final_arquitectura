@@ -3,6 +3,8 @@ FlotaLogix — Plataforma de Gestión de Flota
 v2.0
 """
 
+import logging
+
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -11,6 +13,11 @@ from datetime import date
 
 from config import define_styles_app, render_header
 from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics
+from db import get_write_engine
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("app")
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -19,11 +26,14 @@ st.set_page_config(
     layout="wide",
 )
 
+log.info("Streamlit app initialized")
 define_styles_app()
 render_header()
 
 # ─── Load data ────────────────────────────────────────────────────────────────
+log.info("Loading fleet data")
 df_vehicles, df_services = get_fleet_data()
+log.info("Fleet data loaded: vehicles=%s services=%s", len(df_vehicles), len(df_services))
 
 # ─── Color maps ───────────────────────────────────────────────────────────────
 RISK_COLORS = {"Alto": "#DC2626", "Medio": "#D97706", "Bajo": "#059669"}
@@ -47,8 +57,8 @@ with tab_gerente:
     total_veh  = len(df_v)
     red_zone   = int((df_v["risk_level"] == "Alto").sum())
     total_cost = df_v["total_maintenance_cost"].sum()
-    active     = int((df_v["status"] == "Activo").sum())
-    avail_pct  = round(active / total_veh * 100)
+    available  = int((~df_v["maintenance_required"].fillna(False)).sum())
+    avail_pct  = round(available / total_veh * 100) if total_veh else 0
 
     st.markdown(
         f"""
@@ -56,22 +66,27 @@ with tab_gerente:
             <div class="kpi-card">
                 <div class="kpi-label">🚛 Flota total</div>
                 <div class="kpi-value">{total_veh}</div>
-                <div class="kpi-sub">{active} activos · {total_veh - active} no disponibles</div>
+                <div class="kpi-sub">{avail_pct}% operativa</div>
             </div>
             <div class="kpi-card danger">
                 <div class="kpi-label">🔴 Zona roja</div>
                 <div class="kpi-value">{red_zone}</div>
                 <div class="kpi-sub">Riesgo alto — requieren atención</div>
             </div>
+            <div class="kpi-card success">
+                <div class="kpi-label">✅ Disponibles</div>
+                <div class="kpi-value">{available:,}</div>
+                <div class="kpi-sub">Sin requerir mantenimiento</div>
+            </div>
+            <div class="kpi-card warning">
+                <div class="kpi-label">🔧 Requieren servicio</div>
+                <div class="kpi-value">{total_veh - available:,}</div>
+                <div class="kpi-sub">Con mantenimiento pendiente</div>
+            </div>
             <div class="kpi-card warning">
                 <div class="kpi-label">💰 Costo acumulado</div>
                 <div class="kpi-value">${total_cost:,.0f}</div>
                 <div class="kpi-sub">MXN · mantenimiento total de flota</div>
-            </div>
-            <div class="kpi-card success">
-                <div class="kpi-label">✅ Disponibilidad</div>
-                <div class="kpi-value">{avail_pct}%</div>
-                <div class="kpi-sub">Vehículos operativos hoy</div>
             </div>
         </div>
         """,
@@ -97,11 +112,9 @@ with tab_gerente:
             size_max=20,
             hover_name="plate",
             hover_data={
-                "driver":     True,
                 "type":       True,
                 "brand":      True,
                 "risk_score": True,
-                "status":     True,
                 "lat":        False,
                 "lng":        False,
                 "risk_level": False,
@@ -130,7 +143,7 @@ with tab_gerente:
         df_red = (
             df_v[df_v["risk_level"] == "Alto"]
             .sort_values("risk_score", ascending=False)
-            [["plate", "type", "driver", "risk_score", "total_maintenance_cost", "status"]]
+            [["plate", "make_and_model", "risk_score", "total_maintenance_cost"]]
         )
         st.markdown(
             f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
@@ -148,11 +161,9 @@ with tab_gerente:
                 height=380,
                 column_config={
                     "plate":                  st.column_config.TextColumn("Placa"),
-                    "type":                   st.column_config.TextColumn("Tipo"),
-                    "driver":                 st.column_config.TextColumn("Conductor"),
+                    "make_and_model":         st.column_config.TextColumn("Modelo"),
                     "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
                     "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
-                    "status":                 st.column_config.TextColumn("Estado"),
                 },
             )
 
@@ -317,7 +328,6 @@ with tab_mecanico:
 
         if st.session_state.mec_submitted:
             st.success("✅ Servicio registrado correctamente en el sistema.")
-            st.balloons()
             if st.button("Registrar otro servicio", key="mec_reset", type="primary"):
                 st.session_state.mec_step      = 0
                 st.session_state.mec_data      = {}
@@ -428,8 +438,63 @@ with tab_mecanico:
                 col_ok, col_edit = st.columns(2)
                 with col_ok:
                     if st.button("✅ Confirmar registro", type="primary", use_container_width=True):
-                        st.session_state.mec_submitted = True
-                        st.rerun()
+                        d = st.session_state.mec_data
+                        log.info(
+                            "Submitting maintenance record: plate=%s service_type=%s cost=%s",
+                            d.get("plate"),
+                            d.get("service_type"),
+                            d.get("cost"),
+                        )
+                        notas = (
+                            f"{d.get('description', '')} | "
+                            f"Refacciones: {', '.join(d.get('parts', []))} | "
+                            f"{float(d.get('hours', 0)):.1f} hrs | "
+                            f"{d.get('mechanic', '')}"
+                        )
+                        from sqlalchemy import text as _text
+                        _error_msg = None
+                        try:
+                            with get_write_engine().begin() as _conn:
+                                _conn.execute(
+                                    _text("""
+                                        INSERT INTO maintenance_records
+                                            (vehicle_id, service_date, common_problem,
+                                             solution_used, mechanic_notes, cost, registered_at)
+                                        SELECT v.vehicle_id, NOW(), :problem,
+                                               :solution, :notes, :cost, NOW()
+                                        FROM   vehicles v
+                                        WHERE  v.plate = :plate
+                                    """),
+                                    {
+                                        "plate":    d.get("plate"),
+                                        "problem":  d.get("service_type"),
+                                        "solution": ", ".join(d.get("parts", [])),
+                                        "notes":    notas,
+                                        "cost":     float(d.get("cost", 0)),
+                                    },
+                                )
+                                result = _conn.execute(
+                                    _text("""
+                                        UPDATE risk_scores
+                                        SET    maintenance_required = FALSE
+                                        WHERE  maintenance_required = TRUE
+                                          AND  vehicle_id = (
+                                            SELECT vehicle_id FROM vehicles WHERE plate = :plate
+                                        )
+                                    """),
+                                    {"plate": d.get("plate")},
+                                )
+                                _ = result.rowcount  # filas afectadas (0 = ya estaba en FALSE)
+                            st.session_state.mec_submitted = True
+                            log.info("Maintenance record saved successfully for plate=%s", d.get("plate"))
+                            get_fleet_data.clear()
+                        except Exception as _e:
+                            _error_msg = str(_e)
+                            log.exception("Error saving maintenance record for plate=%s", d.get("plate"))
+                        if _error_msg:
+                            st.error(f"Error al guardar en RDS: {_error_msg}")
+                        else:
+                            st.rerun()
                 with col_edit:
                     if st.button("✏️ Editar respuestas", use_container_width=True):
                         st.session_state.mec_step = 0
@@ -454,15 +519,9 @@ with tab_mecanico:
                     f'<div style="font-size:0.8rem;color:rgba(255,255,255,0.65);margin-top:0.1rem;">'
                     f'{rv["brand"]} · {rv["type"]} · {rv["year"]}</div>'
                     f'<div style="margin-top:0.6rem;display:flex;flex-wrap:wrap;gap:0.4rem;">'
-                    f'<span style="background:rgba(255,255,255,0.12);color:#FFF;'
-                    f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;">'
-                    f'👤 {rv["driver"]}</span>'
                     f'<span style="background:{risk_color}33;color:{risk_color};'
                     f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;font-weight:700;">'
                     f'Riesgo {rv["risk_level"]} · {rv["risk_score"]:.0f} pts</span>'
-                    f'<span style="background:rgba(255,255,255,0.12);color:#FFF;'
-                    f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;">'
-                    f'{rv["status"]}</span>'
                     f'</div>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -526,12 +585,14 @@ with tab_historial:
         sel_stype_h = st.selectbox("Tipo de servicio", all_stype_h, key="hist_stype")
 
     with col_f3:
-        min_date_h    = df_h["date"].min()
-        max_date_h    = df_h["date"].max()
-        sel_date_from = st.date_input("Desde", value=min_date_h, key="hist_from")
+        min_date_h    = pd.to_datetime(df_h["date"]).min()
+        default_from  = min_date_h.date() if pd.notna(min_date_h) else date.today().replace(month=1, day=1)
+        sel_date_from = st.date_input("Desde", value=default_from, key="hist_from")
 
     with col_f4:
-        sel_date_to = st.date_input("Hasta", value=max_date_h, key="hist_to")
+        max_date_h   = pd.to_datetime(df_h["date"]).max()
+        default_to   = max_date_h.date() if pd.notna(max_date_h) else date.today()
+        sel_date_to  = st.date_input("Hasta", value=default_to, key="hist_to")
 
     # Apply filters
     df_filtered = df_h.copy()
@@ -577,11 +638,9 @@ with tab_historial:
                 "type":         st.column_config.TextColumn("Tipo"),
                 "date":         st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
                 "service_type": st.column_config.TextColumn("Servicio"),
-                "parts_used":   st.column_config.TextColumn("Refacciones"),
-                "hours":        st.column_config.NumberColumn("Horas", format="%.1f"),
+                "parts_used":   st.column_config.TextColumn("Solución aplicada"),
                 "cost":         st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
-                "mechanic":     st.column_config.TextColumn("Mecánico"),
-                "status":       st.column_config.TextColumn("Estado"),
+                "mechanic":     st.column_config.TextColumn("Notas mecánico"),
             },
         )
 
