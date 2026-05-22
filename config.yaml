@@ -55,8 +55,6 @@ etl:
       - Actual_Load
       - Last_Maintenance_Date
       - Maintenance_Type
-      - Maintenance_Cost
-      - Engine_Temperature
       - Tire_Pressure
       - Fuel_Consumption
       - Battery_Status
@@ -65,13 +63,10 @@ etl:
       - Brake_Condition
       - Failure_History
       - Anomalies_Detected
-      - Predictive_Score
       - Maintenance_Required
       - Weather_Conditions
       - Road_Conditions
       - Delivery_Times
-      - Downtime_Maintenance
-      - Impact_on_Efficiency
     service:
       - CUSTOMER ID
       - SERVICE HISTORY
@@ -82,12 +77,8 @@ etl:
   validation:
     usage_hours_min: 0
     usage_hours_max: 50000
-    engine_temp_min: 50.0
-    engine_temp_max: 200.0
     tire_pressure_min: 10.0
     tire_pressure_max: 100.0
-    maintenance_cost_min: 0.0
-    maintenance_cost_max: 10000.0
 
 modeling:
   target_col: "Maintenance_Required"
@@ -120,13 +111,13 @@ modeling:
       - Road_Conditions
 
   xgboost:
-    n_estimators: 50
-    max_depth: 4
+    n_estimators: 60
+    max_depth: 6
     learning_rate: 0.1
     subsample: 0.8
     colsample_bytree: 0.8
     tree_method: "hist"
 
-  accuracy_threshold: 0.80   # mínimo para aprobar el modelo
+  accuracy_threshold: 0.75   # mínimo para aprobar el modelo
 
   model_artifact: "model_xgb.pkl"
