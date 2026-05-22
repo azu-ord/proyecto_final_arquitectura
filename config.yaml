@@ -10,22 +10,33 @@ aws:
   region: "us-east-1"
 
   s3_paths:
-    bronze: "auto-repair-shop/bronze"
-    silver: "auto-repair-shop/silver"
-    gold:   "auto-repair-shop/gold"
-    models: "auto-repair-shop/models"
+    bronze:      "auto-repair-shop/bronze"
+    silver:      "auto-repair-shop/silver"
+    gold:        "auto-repair-shop/gold"
+    risk_scores: "auto-repair-shop/gold/risk_scores"   
+    models:      "auto-repair-shop/models"
 
-  secret_name: "itam/rds/auto-repair-shop/credentials"  # pendiente
+  secret_name: "itam/rds/auto-repair-shop/credentials" 
 
 rds:
-  db_name: "auto-repair-shop_db"
+  db_name: "autoshop_db"
   port: 5432
-  host: "TBD"   # pendiente
+  host: "itam-autoshop-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com"         
+  host_replica: "itam-autoshop-replica-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com" 
   tables:
-    - vehicles
+    - vehicles          
     - service_catalog
     - maintenance_records
     - risk_scores
+    - model_run_log
+
+  vehicles_cols:        # columnas que se escriben desde Silver a vehicles
+    - vehicle_id
+    - plate             # generado sintéticamente
+    - make_and_model
+    - year_of_manufacture
+    - vehicle_type
+    - route_info
 
 etl:
   raw_files:
@@ -80,7 +91,7 @@ etl:
 
 modeling:
   target_col: "Maintenance_Required"
-  random_seed: 42
+  random_seed: 123
   test_size: 0.2
 
   features:
@@ -109,11 +120,12 @@ modeling:
       - Road_Conditions
 
   xgboost:
-    n_estimators: 100
-    max_depth: 6
+    n_estimators: 50
+    max_depth: 4
     learning_rate: 0.1
     subsample: 0.8
     colsample_bytree: 0.8
+    tree_method: "hist"
 
   accuracy_threshold: 0.80   # mínimo para aprobar el modelo
 
