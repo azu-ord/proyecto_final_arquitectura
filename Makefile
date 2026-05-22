@@ -1,6 +1,6 @@
 # Makefile for the project. It defines build and run commands for the application.
 
-APP_IMAGE := future-sales:latest
+APP_IMAGE := auto-repair-shop:latest
 ECR_REGION := us-east-1
 CODE_PATHS := main.py frontend
 
@@ -45,8 +45,8 @@ docker-build:
 # docker run
 docker-run:
 	@echo "Ejecutando la aplicación en Docker..."
-	@docker rm -f future-sales-app >/dev/null 2>&1 || true
-	@docker run --rm -d --name future-sales-app -p 8501:8501 \
+	@docker rm -f auto-repair-shop-app >/dev/null 2>&1 || true
+	@docker run --rm -d --name auto-repair-shop-app -p 8501:8501 \
 		--env-file .env \
 		-v ~/.aws:/root/.aws:ro \
 		$(APP_IMAGE)
@@ -58,8 +58,8 @@ docker-run:
 	done
 	@curl -fsS http://localhost:8501/_stcore/health && echo "\nHealth check OK"
 	@echo "Mostrando logs del contenedor (Ctrl+C para detener y limpiar)..."
-	@trap 'echo ""; echo "Deteniendo contenedor future-sales-app..."; docker stop future-sales-app >/dev/null 2>&1 || true; exit 0' INT TERM; \
-		docker logs -f future-sales-app
+	@trap 'echo ""; echo "Deteniendo contenedor auto-repair-shop-app..."; docker stop auto-repair-shop-app >/dev/null 2>&1 || true; exit 0' INT TERM; \
+		docker logs -f auto-repair-shop-app
 
 # auth
 auth:
@@ -75,9 +75,9 @@ create-ecr-repo:
 	@bash -c '\
 		set -euo pipefail; \
 		echo "Creando repositorio ECR en AWS..."; \
-		aws ecr create-repository --repository-name future-sales --region $(ECR_REGION) 2>/dev/null || true; \
+		aws ecr create-repository --repository-name auto-repair-shop --region $(ECR_REGION) 2>/dev/null || true; \
 		ACCOUNT_ID=$$(aws sts get-caller-identity --query Account --output text); \
-		ECR_URI="$$ACCOUNT_ID.dkr.ecr.$(ECR_REGION).amazonaws.com/future-sales"; \
+		ECR_URI="$$ACCOUNT_ID.dkr.ecr.$(ECR_REGION).amazonaws.com/auto-repair-shop"; \
 		echo "Autenticando en ECR..."; \
 		aws ecr get-login-password --region $(ECR_REGION) | \
 			docker login --username AWS --password-stdin "$$ACCOUNT_ID.dkr.ecr.$(ECR_REGION).amazonaws.com"; \

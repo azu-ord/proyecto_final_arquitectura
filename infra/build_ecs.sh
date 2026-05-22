@@ -21,8 +21,8 @@ DB_HOST_REPLICA="${DB_HOST_REPLICA:?'Falta DB_HOST_REPLICA — agrégalo a .env'
 RDS_SG_ID="${RDS_SG_ID:?'Falta RDS_SG_ID — agrégalo a .env'}"
 SECRET_ARN="${SECRET_ARN:?'Falta SECRET_ARN — agrégalo a .env'}"
 
-STACK_NAME="future-sales-app"
-SERVICE_NAME="future-sales"
+STACK_NAME="auto-repair-shop-app"
+SERVICE_NAME="auto-repair-shop"
 REGION="us-east-1"
 
 # ─────────────────────────────────────────────────────────────────────────────
