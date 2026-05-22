@@ -7,12 +7,12 @@ Description: >
   Deploy with:
     aws cloudformation deploy \
       --template-file ecs-fargate-app.yaml \
-      --stack-name future-sales-app \
+      --stack-name  auto-repair-app \
       --capabilities CAPABILITY_NAMED_IAM \
       --parameter-overrides \
           VpcId=vpc-xxxxxxxx \
           SubnetIds="subnet-aaa,subnet-bbb,subnet-ccc" \
-          ImageUri=123456789012.dkr.ecr.us-east-1.amazonaws.com/future-sales:latest \
+          ImageUri=123456789012.dkr.ecr.us-east-1.amazonaws.com/auto-repair-shop:latest \
           DBHostPrimary=itam-forecast-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
           DBHostReplica=itam-forecast-replica-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
           RDSSecurityGroupId=sg-xxxxxxxxxxxxxxxxx \
@@ -38,11 +38,11 @@ Parameters:
     Type: String
     Description: >
       Full ECR image URI.
-      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/future-sales:latest
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/auto-repair-shop:latest
 
   ServiceName:
     Type: String
-    Default: future-sales
+    Default: auto-repair-shop
     MaxLength: 20
     Description: >
       Service name (max 20 characters). Used as a prefix for all resources:
@@ -157,8 +157,8 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource:
-                  - arn:aws:s3:::itam-1c-forecast-daniel
-                  - arn:aws:s3:::itam-1c-forecast-daniel/*
+                  - arn:aws:s3:::itam-final-azucena
+                  - arn:aws:s3:::itam-final-azucena/*
               - Effect: Allow
                 Action:
                   - athena:StartQueryExecution
@@ -328,11 +328,11 @@ Resources:
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
             - Name: S3_BUCKET
-              Value: itam-1c-forecast-daniel
+              Value: itam-final-azucena
             - Name: GOLD_DB
               Value: forecast_gold
             - Name: ATHENA_OUTPUT
-              Value: s3://itam-1c-forecast-daniel/athena-results/
+              Value: s3://itam-final-azucena/athena-results/
             - Name: SECRET_NAME
               Value: itam/rds/1c-forecast/credentials
             # FIX 1: Endpoints de RDS desde parámetros, no hardcodeados

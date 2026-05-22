@@ -30,7 +30,7 @@ rds:
 etl:
   raw_files:
     logistics:  "data/raw/logistics_dataset_with_maintenance_required.csv"
-    service:    "data/raw/final dataset  for kaggle.csv"
+    service:    "data/raw/services_and_reapair.csv"
 
   expected_columns:
     logistics:
@@ -91,15 +91,16 @@ modeling:
       - Fuel_Consumption
       - Battery_Status
       - Vibration_Levels
-      - Maintenance_Cost
       - Failure_History
       - Anomalies_Detected
-      - Predictive_Score
       - Delivery_Times
-      - Downtime_Maintenance
-      - Impact_on_Efficiency
-      - days_since_maintenance   # feature engineering en NB02
+      - days_since_maintenance   # feature engineering
       - load_ratio               # Actual_Load / Load_Capacity
+    # Excluidas por data leakage:
+    #   Predictive_Score   
+    #   Maintenance_Cost    
+    #   Downtime_Maintenance 
+    #   Impact_on_Efficiency 
     categorical:
       - Vehicle_Type
       - Route_Info
