@@ -3,6 +3,8 @@ FlotaLogix — Plataforma de Gestión de Flota
 v2.0
 """
 
+import logging
+
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -13,6 +15,10 @@ from config import define_styles_app, render_header
 from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics
 from db import get_write_engine
 
+# ── Logging ────────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("app")
+
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="FlotaLogix — Gestión de Flota",
@@ -20,11 +26,14 @@ st.set_page_config(
     layout="wide",
 )
 
+log.info("Streamlit app initialized")
 define_styles_app()
 render_header()
 
 # ─── Load data ────────────────────────────────────────────────────────────────
+log.info("Loading fleet data")
 df_vehicles, df_services = get_fleet_data()
+log.info("Fleet data loaded: vehicles=%s services=%s", len(df_vehicles), len(df_services))
 
 # ─── Color maps ───────────────────────────────────────────────────────────────
 RISK_COLORS = {"Alto": "#DC2626", "Medio": "#D97706", "Bajo": "#059669"}
@@ -430,6 +439,12 @@ with tab_mecanico:
                 with col_ok:
                     if st.button("✅ Confirmar registro", type="primary", use_container_width=True):
                         d = st.session_state.mec_data
+                        log.info(
+                            "Submitting maintenance record: plate=%s service_type=%s cost=%s",
+                            d.get("plate"),
+                            d.get("service_type"),
+                            d.get("cost"),
+                        )
                         notas = (
                             f"{d.get('description', '')} | "
                             f"Refacciones: {', '.join(d.get('parts', []))} | "
@@ -471,9 +486,11 @@ with tab_mecanico:
                                 )
                                 _ = result.rowcount  # filas afectadas (0 = ya estaba en FALSE)
                             st.session_state.mec_submitted = True
+                            log.info("Maintenance record saved successfully for plate=%s", d.get("plate"))
                             get_fleet_data.clear()
                         except Exception as _e:
                             _error_msg = str(_e)
+                            log.exception("Error saving maintenance record for plate=%s", d.get("plate"))
                         if _error_msg:
                             st.error(f"Error al guardar en RDS: {_error_msg}")
                         else:

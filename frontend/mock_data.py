@@ -1,11 +1,15 @@
 """Data layer — FlotaLogix (RDS PostgreSQL)."""
 
 import hashlib
+import logging
+
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
 from db import get_read_engine
+
+log = logging.getLogger(__name__)
 
 # ─── Catálogos estáticos (no están en RDS) ────────────────────────────────────
 MECHANICS = sorted([
@@ -56,6 +60,7 @@ def _vehicle_coords(vehicle_id: int) -> tuple[float, float]:
 @st.cache_data(ttl=300)
 def get_fleet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Retorna (vehicles_df, service_history_df) desde RDS. Cache de 5 minutos."""
+    log.info("Fetching fleet data from RDS")
     engine = get_read_engine()
 
     with engine.connect() as conn:
@@ -111,17 +116,21 @@ def get_fleet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     df_v["lat"] = [c[0] for c in coords]
     df_v["lng"] = [c[1] for c in coords]
 
+    log.info("Fleet data ready: vehicles=%s services=%s", len(df_v), len(df_s))
+
     return df_v, df_s
 
 
 @st.cache_data(ttl=300)
 def get_service_types() -> list[str]:
     """Tipos de servicio desde service_catalog."""
+    log.info("Fetching service types from catalog")
     engine = get_read_engine()
     with engine.connect() as conn:
         rows = conn.execute(
             text("SELECT DISTINCT common_problem FROM service_catalog ORDER BY common_problem")
         ).fetchall()
+    log.info("Service types loaded: count=%s", len(rows))
     return [r[0] for r in rows]
 
 
