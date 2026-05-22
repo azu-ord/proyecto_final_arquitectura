@@ -40,6 +40,11 @@ PARTS_CATALOG = sorted([
     "Alternador",
     "Motor de arranque",
     "Bobina de encendido",
+    "Radiador",
+    "Manguera de radiador",
+    "Compresor de aire acondicionado",
+    "Clutch (kit completo)",
+    "Sensor de oxígeno",
 ])
 
 

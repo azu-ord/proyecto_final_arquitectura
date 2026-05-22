@@ -327,7 +327,7 @@ with tab_mecanico:
         {
             "key":      "service_type",
             "label":    "🔧 Tipo de servicio",
-            "question": "¿Qué tipo de servicio se va a realizar?",
+            "question": "¿Qué problema presenta la unidad?",
             "type":     "select",
             "opts":     get_service_types(),
         },
