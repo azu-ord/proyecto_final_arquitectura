@@ -1,6 +1,5 @@
 """Data layer — FlotaLogix (RDS PostgreSQL)."""
 
-import hashlib
 import logging
 
 import pandas as pd
@@ -41,19 +40,12 @@ PARTS_CATALOG = sorted([
     "Alternador",
     "Motor de arranque",
     "Bobina de encendido",
+    "Radiador",
+    "Manguera de radiador",
+    "Compresor de aire acondicionado",
+    "Clutch (kit completo)",
+    "Sensor de oxígeno",
 ])
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def _vehicle_coords(vehicle_id: int) -> tuple[float, float]:
-    """Coordenadas CDMX determinísticas desde vehicle_id.
-
-    Placeholder hasta que se agregue lat/lng a la tabla vehicles en RDS.
-    """
-    h = int(hashlib.md5(str(vehicle_id).encode()).hexdigest(), 16)
-    lat = 19.22 + (h % 100_000) / 100_000 * (19.58 - 19.22)
-    lng = -99.35 + ((h >> 20) % 100_000) / 100_000 * (-98.96 - (-99.35))
-    return round(lat, 5), round(lng, 5)
 
 
 # ─── Queries ──────────────────────────────────────────────────────────────────
@@ -75,7 +67,10 @@ def get_fleet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
                     r.risk_score,
                     r.risk_level,
                     r.maintenance_required,
-                    COALESCE(m.total_cost, 0)      AS total_maintenance_cost
+                    COALESCE(m.total_cost, 0)      AS total_maintenance_cost,
+                    dc.latitude                    AS lat,
+                    dc.longitude                   AS lng,
+                    dc.name                        AS center_name
                 FROM vehicles v
                 LEFT JOIN risk_scores r
                     ON v.vehicle_id = r.vehicle_id
@@ -84,6 +79,8 @@ def get_fleet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
                     FROM   maintenance_records
                     GROUP  BY vehicle_id
                 ) m ON v.vehicle_id = m.vehicle_id
+                LEFT JOIN distribution_centers dc
+                    ON v.center_id = dc.center_id
             """),
             conn,
         )
@@ -111,11 +108,6 @@ def get_fleet_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     # Extraer marca del campo make_and_model (ej. "Ford F-150" → "Ford")
     df_v["brand"] = df_v["make_and_model"].str.split().str[0]
 
-    # Coordenadas determinísticas hasta que RDS tenga columnas lat/lng
-    coords = df_v["vehicle_id"].apply(_vehicle_coords)
-    df_v["lat"] = [c[0] for c in coords]
-    df_v["lng"] = [c[1] for c in coords]
-
     log.info("Fleet data ready: vehicles=%s services=%s", len(df_v), len(df_s))
 
     return df_v, df_s
@@ -140,3 +132,14 @@ def get_parts_catalog() -> list[str]:
 
 def get_mechanics() -> list[str]:
     return MECHANICS
+
+
+@st.cache_data(ttl=300)
+def get_distribution_centers() -> list[str]:
+    """Nombres de centros de distribución desde RDS."""
+    engine = get_read_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT name FROM distribution_centers ORDER BY name")
+        ).fetchall()
+    return [r[0] for r in rows]
