@@ -157,8 +157,8 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource:
-                  - arn:aws:s3:::itam-final-azucena
-                  - arn:aws:s3:::itam-final-azucena/*
+                  - arn:aws:s3:::itam-final-azucena0
+                  - arn:aws:s3:::itam-final-azucena0/*
               - Effect: Allow
                 Action:
                   - athena:StartQueryExecution
@@ -336,11 +336,11 @@ Resources:
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
             - Name: S3_BUCKET
-              Value: itam-final-azucena
+              Value: itam-final-azucena0
             - Name: GOLD_DB
               Value: autoshop_gold
             - Name: ATHENA_OUTPUT
-              Value: s3://itam-final-azucena/athena-results/
+              Value: s3://itam-final-azucena0/athena-results/
             - Name: SECRET_NAME
               Value: itam/rds/auto-repair-shop/credentials
             # FIX 1: Endpoints de RDS desde parámetros, no hardcodeados
