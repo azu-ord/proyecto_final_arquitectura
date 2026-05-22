@@ -4,56 +4,13 @@ Tools available to the mechanic agent.
 Each function decorated with @tool becomes a callable tool for the Strands agent.
 The docstring is used by the model to understand when and how to call each tool,
 so keep them clear and in the same language as the system prompt.
+
+TODO: Replace the mock implementations with real DB queries (SQLAlchemy / RDS)
+      once the data layer is ready. The function signatures and return shapes
+      should stay the same so agent.py doesn't need to change.
 """
 
-import boto3
-import json
-import yaml
-from functools import lru_cache
-from pathlib import Path
-
-from sqlalchemy import create_engine, text
 from strands import tool
-
-_ROOT = Path(__file__).resolve().parent.parent
-
-
-@lru_cache(maxsize=1)
-def _cfg() -> dict:
-    with open(_ROOT / "config.yaml") as f:
-        return yaml.safe_load(f)
-
-
-@lru_cache(maxsize=1)
-def _creds() -> dict:
-    cfg = _cfg()
-    client = boto3.client("secretsmanager", region_name=cfg["aws"]["region"])
-    secret = client.get_secret_value(SecretId=cfg["aws"]["secret_name"])
-    return json.loads(secret["SecretString"])
-
-
-@lru_cache(maxsize=1)
-def get_read_engine():
-    c, cfg = _creds(), _cfg()
-    return create_engine(
-        f"postgresql+psycopg2://{c['username']}:{c['password']}"
-        f"@{cfg['rds']['host_replica']}:{c['port']}/{c['dbname']}",
-        pool_pre_ping=True,
-        pool_size=2,
-        max_overflow=2,
-    )
-
-
-@lru_cache(maxsize=1)
-def get_write_engine():
-    c, cfg = _creds(), _cfg()
-    return create_engine(
-        f"postgresql+psycopg2://{c['username']}:{c['password']}"
-        f"@{cfg['rds']['host']}:{c['port']}/{c['dbname']}",
-        pool_pre_ping=True,
-        pool_size=2,
-        max_overflow=2,
-    )
 
 
 # ─── Vehicle tools ────────────────────────────────────────────────────────────
@@ -64,35 +21,26 @@ def consultar_estado_vehiculo(placa: str) -> dict:
     Consulta el estado actual y nivel de riesgo de un vehículo de la flota.
 
     Args:
-        placa: Placa del vehículo (formato AAA-000)
+        placa: Placa del vehículo (formato AAA-000-A)
 
     Returns:
-        Diccionario con estado, nivel de riesgo, score y make/model del vehículo.
+        Diccionario con estado, nivel de riesgo, score, conductor y
+        fecha del último y próximo mantenimiento.
     """
-    with get_read_engine().connect() as conn:
-        row = conn.execute(
-            text("""
-                SELECT
-                    v.vehicle_id,
-                    v.plate,
-                    v.make_and_model,
-                    v.vehicle_type,
-                    v.year_of_manufacture,
-                    r.risk_score,
-                    r.risk_level,
-                    r.maintenance_required,
-                    r.computed_at
-                FROM   vehicles v
-                LEFT   JOIN risk_scores r ON v.vehicle_id = r.vehicle_id
-                WHERE  v.plate = :plate
-            """),
-            {"plate": placa},
-        ).fetchone()
+    # TODO: reemplazar con query real
+    # with get_read_engine().connect() as conn:
+    #     row = conn.execute(
+    #         text("SELECT * FROM vehicles WHERE plate = :plate"), {"plate": placa}
+    #     ).fetchone()
+    #     if not row:
+    #         return {"found": False, "placa": placa}
+    #     return dict(row._mapping)
 
-    if not row:
-        return {"found": False, "placa": placa, "mensaje": f"Vehículo {placa} no encontrado."}
-
-    return {"found": True, **dict(row._mapping)}
+    return {
+        "found":             False,
+        "placa":             placa,
+        "mensaje":           f"Vehículo {placa} no encontrado. (implementación pendiente)",
+    }
 
 
 @tool
@@ -105,29 +53,23 @@ def buscar_historial_vehiculo(placa: str, n_registros: int = 5) -> list[dict]:
         n_registros: Cuántos registros retornar (default 5, máximo 20)
 
     Returns:
-        Lista de dicts con: record_id, service_date, common_problem,
-        solution_used, mechanic_notes, cost.
+        Lista de dicts con: fecha, tipo_servicio, costo, mecanico, estado
     """
-    with get_read_engine().connect() as conn:
-        rows = conn.execute(
-            text("""
-                SELECT
-                    mr.record_id,
-                    mr.service_date,
-                    mr.common_problem,
-                    mr.solution_used,
-                    mr.mechanic_notes,
-                    mr.cost
-                FROM   maintenance_records mr
-                JOIN   vehicles v ON mr.vehicle_id = v.vehicle_id
-                WHERE  v.plate = :plate
-                ORDER  BY mr.service_date DESC
-                LIMIT  :n
-            """),
-            {"plate": placa, "n": min(n_registros, 20)},
-        ).fetchall()
+    # TODO: reemplazar con query real
+    # with get_read_engine().connect() as conn:
+    #     rows = conn.execute(
+    #         text("""
+    #             SELECT date, service_type, cost, mechanic, status
+    #             FROM   service_history
+    #             WHERE  plate = :plate
+    #             ORDER  BY date DESC
+    #             LIMIT  :n
+    #         """),
+    #         {"plate": placa, "n": min(n_registros, 20)},
+    #     ).fetchall()
+    #     return [dict(r._mapping) for r in rows]
 
-    return [dict(r._mapping) for r in rows]
+    return []
 
 
 # ─── Catalog tools ────────────────────────────────────────────────────────────
@@ -160,6 +102,7 @@ def sugerir_refacciones(tipo_servicio: str) -> list[str]:
 
     refacciones = catalogo.get(tipo_servicio)
     if not refacciones:
+        # fuzzy fallback: buscar por coincidencia parcial
         tipo_lower = tipo_servicio.lower()
         for key, val in catalogo.items():
             if tipo_lower in key.lower() or key.lower() in tipo_lower:
@@ -173,13 +116,13 @@ def sugerir_refacciones(tipo_servicio: str) -> list[str]:
 
 @tool
 def registrar_servicio(
-    placa:         str,
+    placa:        str,
     tipo_servicio: str,
-    descripcion:   str,
-    refacciones:   list[str],
-    horas:         float,
-    costo:         float,
-    mecanico:      str,
+    descripcion:  str,
+    refacciones:  list[str],
+    horas:        float,
+    costo:        float,
+    mecanico:     str,
 ) -> dict:
     """
     Registra un nuevo servicio de mantenimiento en el sistema.
@@ -197,48 +140,28 @@ def registrar_servicio(
     Returns:
         Confirmación del registro con ID de servicio generado.
     """
-    notas = f"{descripcion} | Refacciones: {', '.join(refacciones)} | {horas:.1f} hrs | {mecanico}"
+    # TODO: reemplazar con INSERT real
+    # with get_write_engine().begin() as conn:
+    #     result = conn.execute(
+    #         text("""
+    #             INSERT INTO service_history
+    #               (plate, service_type, description, parts_used, hours, cost, mechanic, date, status)
+    #             VALUES
+    #               (:plate, :stype, :desc, :parts, :hours, :cost, :mech, NOW(), 'Completado')
+    #             RETURNING service_id
+    #         """),
+    #         { ... }
+    #     )
+    #     return {"success": True, "service_id": result.fetchone()[0]}
 
-    with get_write_engine().begin() as conn:
-        result = conn.execute(
-            text("""
-                INSERT INTO maintenance_records
-                    (vehicle_id, service_date, common_problem,
-                     solution_used, mechanic_notes, cost, registered_at)
-                SELECT
-                    v.vehicle_id,
-                    NOW(),
-                    :problem,
-                    :solution,
-                    :notes,
-                    :cost,
-                    NOW()
-                FROM vehicles v
-                WHERE v.plate = :plate
-                RETURNING record_id
-            """),
-            {
-                "plate":    placa,
-                "problem":  tipo_servicio,
-                "solution": ", ".join(refacciones),
-                "notes":    notas,
-                "cost":     costo,
-            },
-        )
-        row = result.fetchone()
+    import uuid
+    service_id = str(uuid.uuid4())[:8].upper()
 
-    if not row:
-        return {
-            "success": False,
-            "mensaje": f"No se encontró el vehículo con placa {placa}.",
-        }
-
-    record_id = row[0]
     return {
         "success":    True,
-        "service_id": str(record_id),
-        "mensaje": (
-            f"Servicio #{record_id} registrado: {tipo_servicio} "
+        "service_id": service_id,
+        "mensaje":    (
+            f"Servicio {service_id} registrado: {tipo_servicio} "
             f"en vehículo {placa} por {mecanico}. "
             f"Costo: ${costo:,.0f} MXN · {horas:.1f} hrs."
         ),

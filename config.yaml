@@ -21,8 +21,8 @@ aws:
 rds:
   db_name: "autoshop_db"
   port: 5432
-  host: "itam-autoshop-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com"         
-  host_replica: "itam-autoshop-replica-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com" 
+  host: "itam-autoshop-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com"         
+  host_replica: "itam-autoshop-replica-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com" 
   tables:
     - vehicles          
     - service_catalog

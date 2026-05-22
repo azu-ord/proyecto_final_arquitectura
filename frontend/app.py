@@ -11,7 +11,6 @@ from datetime import date
 
 from config import define_styles_app, render_header
 from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics
-from db import get_write_engine
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -48,8 +47,8 @@ with tab_gerente:
     total_veh  = len(df_v)
     red_zone   = int((df_v["risk_level"] == "Alto").sum())
     total_cost = df_v["total_maintenance_cost"].sum()
-    available  = int((~df_v["maintenance_required"].fillna(False)).sum())
-    avail_pct  = round(available / total_veh * 100) if total_veh else 0
+    active     = int((df_v["status"] == "Activo").sum())
+    avail_pct  = round(active / total_veh * 100)
 
     st.markdown(
         f"""
@@ -57,7 +56,7 @@ with tab_gerente:
             <div class="kpi-card">
                 <div class="kpi-label">🚛 Flota total</div>
                 <div class="kpi-value">{total_veh}</div>
-                <div class="kpi-sub">{available} disponibles · {total_veh - available} requieren servicio</div>
+                <div class="kpi-sub">{active} activos · {total_veh - active} no disponibles</div>
             </div>
             <div class="kpi-card danger">
                 <div class="kpi-label">🔴 Zona roja</div>
@@ -72,7 +71,7 @@ with tab_gerente:
             <div class="kpi-card success">
                 <div class="kpi-label">✅ Disponibilidad</div>
                 <div class="kpi-value">{avail_pct}%</div>
-                <div class="kpi-sub">Sin requerir mantenimiento</div>
+                <div class="kpi-sub">Vehículos operativos hoy</div>
             </div>
         </div>
         """,
@@ -98,9 +97,11 @@ with tab_gerente:
             size_max=20,
             hover_name="plate",
             hover_data={
+                "driver":     True,
                 "type":       True,
                 "brand":      True,
                 "risk_score": True,
+                "status":     True,
                 "lat":        False,
                 "lng":        False,
                 "risk_level": False,
@@ -129,7 +130,7 @@ with tab_gerente:
         df_red = (
             df_v[df_v["risk_level"] == "Alto"]
             .sort_values("risk_score", ascending=False)
-            [["plate", "type", "risk_score", "total_maintenance_cost"]]
+            [["plate", "type", "driver", "risk_score", "total_maintenance_cost", "status"]]
         )
         st.markdown(
             f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
@@ -148,8 +149,10 @@ with tab_gerente:
                 column_config={
                     "plate":                  st.column_config.TextColumn("Placa"),
                     "type":                   st.column_config.TextColumn("Tipo"),
+                    "driver":                 st.column_config.TextColumn("Conductor"),
                     "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
                     "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
+                    "status":                 st.column_config.TextColumn("Estado"),
                 },
             )
 
@@ -425,38 +428,7 @@ with tab_mecanico:
                 col_ok, col_edit = st.columns(2)
                 with col_ok:
                     if st.button("✅ Confirmar registro", type="primary", use_container_width=True):
-                        d = st.session_state.mec_data
-                        notas = (
-                            f"{d.get('description', '')} | "
-                            f"Refacciones: {', '.join(d.get('parts', []))} | "
-                            f"{float(d.get('hours', 0)):.1f} hrs | "
-                            f"{d.get('mechanic', '')}"
-                        )
-                        from sqlalchemy import text as _text
-                        try:
-                            with get_write_engine().begin() as _conn:
-                                _conn.execute(
-                                    _text("""
-                                        INSERT INTO maintenance_records
-                                            (vehicle_id, service_date, common_problem,
-                                             solution_used, mechanic_notes, cost, registered_at)
-                                        SELECT v.vehicle_id, NOW(), :problem,
-                                               :solution, :notes, :cost, NOW()
-                                        FROM   vehicles v
-                                        WHERE  v.plate = :plate
-                                    """),
-                                    {
-                                        "plate":    d.get("plate"),
-                                        "problem":  d.get("service_type"),
-                                        "solution": ", ".join(d.get("parts", [])),
-                                        "notes":    notas,
-                                        "cost":     float(d.get("cost", 0)),
-                                    },
-                                )
-                            st.session_state.mec_submitted = True
-                            get_fleet_data.clear()
-                        except Exception as _e:
-                            st.error(f"Error al guardar en RDS: {_e}")
+                        st.session_state.mec_submitted = True
                         st.rerun()
                 with col_edit:
                     if st.button("✏️ Editar respuestas", use_container_width=True):
@@ -482,9 +454,15 @@ with tab_mecanico:
                     f'<div style="font-size:0.8rem;color:rgba(255,255,255,0.65);margin-top:0.1rem;">'
                     f'{rv["brand"]} · {rv["type"]} · {rv["year"]}</div>'
                     f'<div style="margin-top:0.6rem;display:flex;flex-wrap:wrap;gap:0.4rem;">'
+                    f'<span style="background:rgba(255,255,255,0.12);color:#FFF;'
+                    f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;">'
+                    f'👤 {rv["driver"]}</span>'
                     f'<span style="background:{risk_color}33;color:{risk_color};'
                     f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;font-weight:700;">'
                     f'Riesgo {rv["risk_level"]} · {rv["risk_score"]:.0f} pts</span>'
+                    f'<span style="background:rgba(255,255,255,0.12);color:#FFF;'
+                    f'font-size:0.71rem;padding:0.15rem 0.6rem;border-radius:999px;">'
+                    f'{rv["status"]}</span>'
                     f'</div>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -548,14 +526,12 @@ with tab_historial:
         sel_stype_h = st.selectbox("Tipo de servicio", all_stype_h, key="hist_stype")
 
     with col_f3:
-        min_date_h    = pd.to_datetime(df_h["date"]).min()
-        default_from  = min_date_h.date() if pd.notna(min_date_h) else date.today().replace(month=1, day=1)
-        sel_date_from = st.date_input("Desde", value=default_from, key="hist_from")
+        min_date_h    = df_h["date"].min()
+        max_date_h    = df_h["date"].max()
+        sel_date_from = st.date_input("Desde", value=min_date_h, key="hist_from")
 
     with col_f4:
-        max_date_h   = pd.to_datetime(df_h["date"]).max()
-        default_to   = max_date_h.date() if pd.notna(max_date_h) else date.today()
-        sel_date_to  = st.date_input("Hasta", value=default_to, key="hist_to")
+        sel_date_to = st.date_input("Hasta", value=max_date_h, key="hist_to")
 
     # Apply filters
     df_filtered = df_h.copy()
@@ -601,9 +577,11 @@ with tab_historial:
                 "type":         st.column_config.TextColumn("Tipo"),
                 "date":         st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
                 "service_type": st.column_config.TextColumn("Servicio"),
-                "parts_used":   st.column_config.TextColumn("Solución aplicada"),
+                "parts_used":   st.column_config.TextColumn("Refacciones"),
+                "hours":        st.column_config.NumberColumn("Horas", format="%.1f"),
                 "cost":         st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
-                "mechanic":     st.column_config.TextColumn("Notas mecánico"),
+                "mechanic":     st.column_config.TextColumn("Mecánico"),
+                "status":       st.column_config.TextColumn("Estado"),
             },
         )
 
