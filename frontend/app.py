@@ -99,11 +99,19 @@ with tab_gerente:
         unsafe_allow_html=True,
     )
 
-    # Filtro por centro de distribución
-    centers = ["Todos los CEDIS"] + get_distribution_centers()
-    sel_center = st.selectbox("Centro de distribución", centers, key="map_center_filter")
+    # Filtros
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        centers = ["Todos los CEDIS"] + get_distribution_centers()
+        sel_center = st.selectbox("Centro de distribución", centers, key="map_center_filter")
+    with col_f2:
+        sel_risk = st.selectbox("Nivel de riesgo", ["Todos", "Alto", "Medio", "Bajo"], key="map_risk_filter")
 
-    df_map = df_v if sel_center == "Todos los CEDIS" else df_v[df_v["center_name"] == sel_center]
+    df_map = df_v.copy()
+    if sel_center != "Todos los CEDIS":
+        df_map = df_map[df_map["center_name"] == sel_center]
+    if sel_risk != "Todos":
+        df_map = df_map[df_map["risk_level"] == sel_risk]
 
     # Centrado dinámico según CEDIS seleccionado
     if sel_center == "Todos los CEDIS" or df_map.empty:
@@ -188,19 +196,21 @@ with tab_gerente:
         st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
 
     with col_red:
+        table_risk = sel_risk if sel_risk != "Todos" else "Alto"
         df_red = (
-            df_map[df_map["risk_level"] == "Alto"]
+            df_map[df_map["risk_level"] == table_risk]
             .sort_values("risk_score", ascending=False)
-            [["plate", "make_and_model", "center_name", "risk_score", "total_maintenance_cost"]]
+            [["plate", "make_and_model", "center_name", "risk_score", "year"]]
         )
+        risk_color = RISK_COLORS.get(table_risk, "#DC2626")
         st.markdown(
-            f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
+            f'<div style="color:{risk_color};font-size:0.65rem;font-weight:700;'
             f'letter-spacing:0.09em;text-transform:uppercase;margin-bottom:0.5rem;">'
-            f'⚠ {len(df_red)} vehículos en zona roja</div>',
+            f'⚠ {len(df_red)} vehículos — riesgo {table_risk}</div>',
             unsafe_allow_html=True,
         )
         if df_red.empty:
-            st.success("Sin vehículos en zona roja.")
+            st.success(f"Sin vehículos con riesgo {table_risk}.")
         else:
             st.dataframe(
                 df_red,
@@ -208,11 +218,11 @@ with tab_gerente:
                 hide_index=True,
                 height=380,
                 column_config={
-                    "plate":                  st.column_config.TextColumn("Placa"),
-                    "make_and_model":         st.column_config.TextColumn("Modelo"),
-                    "center_name":            st.column_config.TextColumn("CEDIS"),
-                    "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
-                    "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
+                    "plate":         st.column_config.TextColumn("Placa"),
+                    "make_and_model": st.column_config.TextColumn("Modelo"),
+                    "center_name":   st.column_config.TextColumn("CEDIS"),
+                    "risk_score":    st.column_config.NumberColumn("Score", format="%.1f"),
+                    "year":          st.column_config.NumberColumn("Año"),
                 },
             )
 
