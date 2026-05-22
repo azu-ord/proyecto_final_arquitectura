@@ -37,6 +37,7 @@ rds:
     - year_of_manufacture
     - vehicle_type
     - route_info
+    - center_id         # FK a distribution_centers
 
 etl:
   raw_files:
@@ -67,6 +68,7 @@ etl:
       - Weather_Conditions
       - Road_Conditions
       - Delivery_Times
+      - center_id
     service:
       - CUSTOMER ID
       - SERVICE HISTORY
