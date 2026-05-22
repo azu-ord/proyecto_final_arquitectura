@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Deploys a minimal PostgreSQL 17 RDS instance for the ITAM data product architecture
-  course (chapter 10). Provisions the DB subnet group, security group, credentials
-  in Secrets Manager, and the db.t3.micro instance — the smallest available class
-  (free-tier eligible). Designed to be accessed from SageMaker Studio in the same VPC.
+  Deploys a minimal PostgreSQL 17 RDS instance for AutoShop Intelligence.
+  Provisions the DB subnet group, security group, credentials in Secrets Manager,
+  and a db.t3.micro instance (free-tier eligible).
+  Designed to be accessed from SageMaker Studio in the same VPC.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PARAMETERS
@@ -25,7 +25,7 @@ Parameters:
   DBName:
     Type: String
     Description: Name of the initial database to create inside the RDS instance.
-    Default: forecast_db
+    Default: autoshop_db
 
   DBUsername:
     Type: String
@@ -44,17 +44,16 @@ Parameters:
   SecretName:
     Type: String
     Description: >
-      Secrets Manager secret name. Change this if you need to redeploy within
-      the 7-day recovery window of a previously deleted secret (e.g. itam/rds/forecast/credentials-v2).
-    Default: itam/rds/1c-forecast/credentials
+      Secrets Manager secret name. Must match aws.secret_name in config.yaml.
+    Default: itam/rds/auto-repair-shop/credentials
 
   CreateReadReplica:
     Type: String
     Description: >
       Set to true to provision a read replica (db.t3.micro) in the same VPC.
-      Use the replica endpoint for ETL reads and the primary endpoint for CRUD writes.
-      Doubles the hourly RDS cost (~$0.034/hr each). Default is false to keep costs low.
-    Default: 'false'
+      Use the replica endpoint for ETL reads and the primary endpoint for writes.
+      Recommended for production-like pipelines. Doubles hourly RDS cost (~$0.034/hr each).
+    Default: 'true'
     AllowedValues:
       - 'true'
       - 'false'
@@ -74,11 +73,8 @@ Resources:
   # ───────────────────────────────────────────────────────────────────────────
   # SECRETS MANAGER — RDS CREDENTIALS
   #
-  # Stores the DB password so SageMaker notebooks retrieve it via boto3
-  # (secretsmanager.get_secret_value) instead of hard-coding credentials.
-  #
-  # Secret format is compatible with the standard RDS rotation format, making
-  # it straightforward to enable automatic rotation later.
+  # Stores DB credentials so SageMaker notebooks retrieve them via boto3
+  # instead of hard-coding passwords in notebooks or config files.
   # ───────────────────────────────────────────────────────────────────────────
 
   RdsCredentialsSecret:
@@ -87,7 +83,7 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       Name: !Ref SecretName
-      Description: Master credentials for the course RDS PostgreSQL instance.
+      Description: Master credentials for AutoShop Intelligence RDS PostgreSQL instance.
       SecretString: !Sub |
         {
           "username": "${DBUsername}",
@@ -100,13 +96,11 @@ Resources:
   # ───────────────────────────────────────────────────────────────────────────
   # NETWORKING — SECURITY GROUP
   #
-  # SageMaker domain uses PublicInternetOnly mode — kernel pods run in an
-  # AWS-managed network and never get ENIs in the customer VPC. The instance
-  # must be publicly accessible so notebooks can reach port 5432 over the
-  # internet. Inbound is open to 0.0.0.0/0 on port 5432.
+  # SageMaker Studio uses PublicInternetOnly mode — kernel pods run in an
+  # AWS-managed network without ENIs in the customer VPC. The instance must be
+  # publicly accessible so notebooks can reach port 5432 over the internet.
   #
-  # NOTE: acceptable for a course environment. For production use VpcOnly
-  # mode on the SageMaker domain and set PubliclyAccessible: false.
+  # NOTE: acceptable for a course environment. For production use VpcOnly mode.
   # ───────────────────────────────────────────────────────────────────────────
 
   RdsSecurityGroup:
@@ -123,34 +117,23 @@ Resources:
 
   # ───────────────────────────────────────────────────────────────────────────
   # RDS SUBNET GROUP
-  #
-  # RDS requires a subnet group even for single-AZ instances. Two subnets in
-  # different AZs are required for the group even when MultiAZ is disabled.
   # ───────────────────────────────────────────────────────────────────────────
 
   RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: Subnet group for the ITAM course RDS instance
+      DBSubnetGroupDescription: Subnet group for AutoShop Intelligence RDS instance
       SubnetIds: !Ref SubnetIds
 
   # ───────────────────────────────────────────────────────────────────────────
-  # RDS INSTANCE — db.t3.micro / PostgreSQL 17.4
+  # RDS INSTANCE — db.t3.micro / PostgreSQL 17
   #
-  # db.t3.micro: 2 vCPU (burstable), 1 GB RAM — the smallest available class
-  # and free-tier eligible for the first 750 hours/month.
-  #
-  # AllocatedStorage: 20 GB gp2 — minimum for PostgreSQL on RDS; sufficient
-  # for the forecast  dataset used in class demos.
-  #
-  # MultiAZ: false — single-AZ is fine for a course environment and avoids
-  # doubling the hourly cost.
-  #
-  # PubliclyAccessible: false — only reachable from within the VPC. Students
-  # connect through SageMaker Studio, not their laptops.
-  #
-  # DeletionPolicy: Delete — lets CloudFormation remove the instance when the
-  # stack is deleted. Change to Snapshot if you need to preserve data.
+  # Tables created by NB04 (notebooks/04_rds_setup.ipynb):
+  #   - vehicles          (catálogo de vehículos)
+  #   - risk_scores       (scores pre-computados por NB03)
+  #   - service_catalog   (conocimiento para el agente de Daniel)
+  #   - maintenance_records (registros escritos por el agente)
+  #   - model_run_log     (metadata de ejecuciones del modelo)
   # ───────────────────────────────────────────────────────────────────────────
 
   RdsInstance:
@@ -158,7 +141,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      DBInstanceIdentifier: !Sub 'itam-forecast-${AWS::AccountId}'
+      DBInstanceIdentifier: !Sub 'itam-autoshop-${AWS::AccountId}'
       DBInstanceClass: db.t3.micro
       Engine: postgres
       EngineVersion: '17.4'
@@ -172,23 +155,18 @@ Resources:
       DBSubnetGroupName: !Ref RdsSubnetGroup
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
-      BackupRetentionPeriod: 1       # 1-day automated backup window (minimum)
-      StorageEncrypted: true         # Encrypt at rest with AWS-managed key
-      AutoMinorVersionUpgrade: true  # Keep patch-level versions current
+      BackupRetentionPeriod: 1
+      StorageEncrypted: true
+      AutoMinorVersionUpgrade: true
 
   # ───────────────────────────────────────────────────────────────────────────
-  # READ REPLICA (OPTIONAL)
+  # READ REPLICA (OPTIONAL — default: true)
   #
-  # Created only when CreateReadReplica=true. Inherits engine, engine version,
-  # credentials, and storage from the primary — do not set DBName,
-  # MasterUsername, MasterUserPassword, or EngineVersion on a replica.
+  # Patrón recomendado para pipelines robustos:
+  #   - Réplica: lecturas ETL (NB03 read-back, Streamlit dashboard)
+  #   - Primaria: escrituras (NB03 batch insert, agente Daniel)
   #
-  # Use case: direct ETL reads (pd.read_sql, awswrangler) to this endpoint
-  # and CRUD writes to the primary. This is the standard read/write split
-  # pattern used in production data engineering pipelines.
-  #
-  # Replica lag: PostgreSQL replication is asynchronous. For ETL batch jobs
-  # the lag (typically <1s) is acceptable.
+  # Replicación asíncrona PostgreSQL — lag típico < 1s, aceptable para ETL batch.
   # ───────────────────────────────────────────────────────────────────────────
 
   RdsReadReplica:
@@ -197,7 +175,7 @@ Resources:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Delete
     Properties:
-      DBInstanceIdentifier: !Sub 'itam-forecast-replica-${AWS::AccountId}'
+      DBInstanceIdentifier: !Sub 'itam-autoshop-replica-${AWS::AccountId}'
       DBInstanceClass: db.t3.micro
       SourceDBInstanceIdentifier: !Ref RdsInstance
       PubliclyAccessible: true
@@ -212,8 +190,7 @@ Outputs:
 
   RdsEndpoint:
     Description: >
-      Hostname to use in the SQLAlchemy connection string.
-      Use this as RDS_ENDPOINT in gold.py.
+      Hostname para usar en config.yaml (rds.host) y en la connection string.
     Value: !GetAtt RdsInstance.Endpoint.Address
 
   RdsPort:
@@ -221,16 +198,11 @@ Outputs:
     Value: !GetAtt RdsInstance.Endpoint.Port
 
   RdsSecretArn:
-    Description: >
-      ARN of the Secrets Manager secret that holds the DB credentials.
-      Retrieve from SageMaker with:
-        import boto3, json
-        secret = boto3.client('secretsmanager').get_secret_value(SecretId='<arn>')
-        creds  = json.loads(secret['SecretString'])
+    Description: ARN del secret en Secrets Manager con las credenciales.
     Value: !Ref RdsCredentialsSecret
 
   RdsSecretName:
-    Description: Friendly name of the Secrets Manager secret.
+    Description: Nombre del secret (debe coincidir con aws.secret_name en config.yaml).
     Value: !Ref SecretName
 
   RdsInstanceId:
@@ -239,24 +211,22 @@ Outputs:
 
   ConnectionString:
     Description: >
-      SQLAlchemy connection string template (replace <password> with the value
-      from Secrets Manager — never hard-code credentials in notebooks).
+      SQLAlchemy connection string (reemplazar <password> con el valor de Secrets Manager).
     Value: !Sub 'postgresql+psycopg2://${DBUsername}:<password>@${RdsInstance.Endpoint.Address}:5432/${DBName}'
 
   RdsReplicaEndpoint:
     Condition: EnableReadReplica
     Description: >
-      Hostname of the read replica. Use this endpoint for ETL reads (pd.read_sql,
-      awswrangler) to avoid adding load to the primary instance.
+      Endpoint de la réplica de lectura. Usar para ETL reads y Streamlit dashboard.
     Value: !GetAtt RdsReadReplica.Endpoint.Address
 
   RdsReplicaPort:
     Condition: EnableReadReplica
-    Description: PostgreSQL port of the read replica (always 5432).
+    Description: PostgreSQL port de la réplica (always 5432).
     Value: !GetAtt RdsReadReplica.Endpoint.Port
 
   ReplicaConnectionString:
     Condition: EnableReadReplica
     Description: >
-      SQLAlchemy connection string template for the read replica.
+      SQLAlchemy connection string para la réplica de lectura.
     Value: !Sub 'postgresql+psycopg2://${DBUsername}:<password>@${RdsReadReplica.Endpoint.Address}:5432/${DBName}'
