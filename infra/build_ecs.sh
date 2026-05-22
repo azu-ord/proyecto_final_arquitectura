@@ -67,6 +67,7 @@ if [ -n "${SM_CURRENT_HOST:-}" ]; then
 fi
 
 docker build ${NETWORK_FLAG} \
+    --no-cache \
     --platform linux/amd64 \
     -t "${ECR_URI}:${GIT_SHA}" \
     -t "${ECR_URI}:latest" \

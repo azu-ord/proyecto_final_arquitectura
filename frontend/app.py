@@ -314,7 +314,6 @@ with tab_mecanico:
 
         if st.session_state.mec_submitted:
             st.success("✅ Servicio registrado correctamente en el sistema.")
-            st.balloons()
             if st.button("Registrar otro servicio", key="mec_reset", type="primary"):
                 st.session_state.mec_step      = 0
                 st.session_state.mec_data      = {}
