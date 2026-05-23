@@ -12,6 +12,7 @@ run_normalizacion        — Plain function (used directly by the Streamlit fron
 
 import json
 import logging
+import os
 import re
 import boto3
 
@@ -70,16 +71,17 @@ def run_normalizacion(descripcion: str, tipo_servicio: str) -> dict:
     }
 
     try:
-        cfg = _cfg()
-        region = cfg.get("aws", {}).get("region", "us-east-1")
+        region = os.getenv("AWS_REGION", _cfg().get("aws", {}).get("region", "us-east-1"))
 
         log.info(
-            "normalizar_descripcion: Bedrock call | service=%r | input_len=%d chars",
+            "normalizar_descripcion: Bedrock call | service=%r | input_len=%d chars | region=%s",
             tipo_servicio,
             len(descripcion),
+            region,
         )
 
-        client = boto3.client("bedrock-runtime", region_name=region)
+        session = boto3.Session(region_name=region)
+        client = session.client("bedrock-runtime")
 
         body = {
             "anthropic_version": "bedrock-2023-05-31",
@@ -109,7 +111,7 @@ def run_normalizacion(descripcion: str, tipo_servicio: str) -> dict:
         }
 
         response = client.invoke_model(
-            modelId="us.anthropic.claude-3-5-haiku-20241022-v1:0",
+            modelId="us.anthropic.claude-haiku-4-5-20251001-v1:0",
             contentType="application/json",
             accept="application/json",
             body=json.dumps(body),

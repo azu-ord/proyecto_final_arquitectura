@@ -138,7 +138,7 @@ resultado = registrar_servicio(
 
 ### `normalizer.py`
 
-Llama a **Claude Haiku 3.5** (`us.anthropic.claude-3-5-haiku-20241022-v1:0`) directamente vía `boto3` para normalizar la descripción del mecánico en una sola llamada: detecta idioma, corrige ortografía y traduce al inglés si aplica.
+Llama a **Amazon Nova Micro** (`amazon.nova-micro-v1:0`) directamente vía `boto3` para normalizar la descripción del mecánico en una sola llamada: detecta idioma, corrige ortografía y traduce al inglés si aplica.
 
 > **Transparencia:** el agente muestra el resultado al mecánico y pide confirmación antes de proceder con `registrar_servicio`.
 
@@ -241,6 +241,6 @@ BD mechanic_notes:
 | Amazon RDS (writer) | INSERT en `maintenance_records` |
 | Amazon RDS (replica) | SELECT en `vehicles`, `maintenance_records`, `risk_scores` |
 | Amazon Bedrock — Claude Sonnet 4.6 | Modelo principal del agente |
-| Amazon Bedrock — Claude Haiku 3.5 (`us.anthropic.claude-3-5-haiku-20241022-v1:0`) | Normalización de texto (ligero/barato) |
+| Amazon Bedrock — Amazon Nova Micro (`amazon.nova-micro-v1:0`) | Normalización de texto (ligero/barato) |
 
 La región y los endpoints se leen de `config.yaml` en la raíz del proyecto. En local se usan variables de entorno (`AWS_REGION`); en ECS se usa el IAM role del task.
