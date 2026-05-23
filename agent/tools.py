@@ -13,19 +13,26 @@ from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
-from strands import tool
+
+try:
+    from strands import tool
+except ImportError:
+    def tool(fn):  # type: ignore[misc]
+        return fn
 
 _ROOT = Path(__file__).resolve().parent.parent
 
 
 @lru_cache(maxsize=1)
 def _cfg() -> dict:
+    """Retorna la configuración de base de datos y AWS desde config.yaml o variables de entorno."""
     with open(_ROOT / "config.yaml") as f:
         return yaml.safe_load(f)
 
 
 @lru_cache(maxsize=1)
 def _creds() -> dict:
+    """Retorna las credenciales de la base de datos desde AWS Secrets Manager."""
     cfg = _cfg()
     client = boto3.client("secretsmanager", region_name=cfg["aws"]["region"])
     secret = client.get_secret_value(SecretId=cfg["aws"]["secret_name"])
@@ -34,6 +41,7 @@ def _creds() -> dict:
 
 @lru_cache(maxsize=1)
 def get_read_engine():
+    """Retorna un engine de SQLAlchemy para lectura desde la base de datos."""
     c, cfg = _creds(), _cfg()
     return create_engine(
         f"postgresql+psycopg2://{c['username']}:{c['password']}"
@@ -46,6 +54,7 @@ def get_read_engine():
 
 @lru_cache(maxsize=1)
 def get_write_engine():
+    """Retorna un engine de SQLAlchemy para escritura en la base de datos."""
     c, cfg = _creds(), _cfg()
     return create_engine(
         f"postgresql+psycopg2://{c['username']}:{c['password']}"
@@ -197,7 +206,12 @@ def registrar_servicio(
     Returns:
         Confirmación del registro con ID de servicio generado.
     """
-    notas = f"{descripcion} | Refacciones: {', '.join(refacciones)} | {horas:.1f} hrs | {mecanico}"
+    notas = (
+        f"PROBLEM: {tipo_servicio}\n"
+        f"WORK_DONE: {descripcion}\n"
+        f"PARTS_USED: {', '.join(refacciones)}\n"
+        f"LABOR: {horas:.1f} hrs | TECHNICIAN: {mecanico}"
+    )
 
     with get_write_engine().begin() as conn:
         result = conn.execute(

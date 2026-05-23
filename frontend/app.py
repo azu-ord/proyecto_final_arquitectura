@@ -4,6 +4,12 @@ v2.0
 """
 
 import logging
+import sys
+from pathlib import Path
+
+# Agrega la raíz del proyecto a sys.path para que 'agent' sea importable
+# cuando Streamlit corre desde frontend/ como directorio base.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 import streamlit as st
@@ -14,6 +20,7 @@ from datetime import date
 from config import define_styles_app, render_header
 from mock_data import get_fleet_data, get_service_types, get_parts_catalog, get_mechanics, get_distribution_centers
 from db import get_write_engine
+from agent.normalizer import run_normalizacion as normalizar_descripcion
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -99,11 +106,19 @@ with tab_gerente:
         unsafe_allow_html=True,
     )
 
-    # Filtro por centro de distribución
-    centers = ["Todos los CEDIS"] + get_distribution_centers()
-    sel_center = st.selectbox("Centro de distribución", centers, key="map_center_filter")
+    # Filtros
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        centers = ["Todos los CEDIS"] + get_distribution_centers()
+        sel_center = st.selectbox("Centro de distribución", centers, key="map_center_filter")
+    with col_f2:
+        sel_risk = st.selectbox("Nivel de riesgo", ["Todos", "Alto", "Medio", "Bajo"], key="map_risk_filter")
 
-    df_map = df_v if sel_center == "Todos los CEDIS" else df_v[df_v["center_name"] == sel_center]
+    df_map = df_v.copy()
+    if sel_center != "Todos los CEDIS":
+        df_map = df_map[df_map["center_name"] == sel_center]
+    if sel_risk != "Todos":
+        df_map = df_map[df_map["risk_level"] == sel_risk]
 
     # Centrado dinámico según CEDIS seleccionado
     if sel_center == "Todos los CEDIS" or df_map.empty:
@@ -188,19 +203,21 @@ with tab_gerente:
         st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
 
     with col_red:
+        table_risk = sel_risk if sel_risk != "Todos" else "Alto"
         df_red = (
-            df_map[df_map["risk_level"] == "Alto"]
+            df_map[df_map["risk_level"] == table_risk]
             .sort_values("risk_score", ascending=False)
-            [["plate", "make_and_model", "center_name", "risk_score", "total_maintenance_cost"]]
+            [["plate", "make_and_model", "center_name", "risk_score", "year"]]
         )
+        risk_color = RISK_COLORS.get(table_risk, "#DC2626")
         st.markdown(
-            f'<div style="color:var(--red,#DC2626);font-size:0.65rem;font-weight:700;'
+            f'<div style="color:{risk_color};font-size:0.65rem;font-weight:700;'
             f'letter-spacing:0.09em;text-transform:uppercase;margin-bottom:0.5rem;">'
-            f'⚠ {len(df_red)} vehículos en zona roja</div>',
+            f'⚠ {len(df_red)} vehículos — riesgo {table_risk}</div>',
             unsafe_allow_html=True,
         )
         if df_red.empty:
-            st.success("Sin vehículos en zona roja.")
+            st.success(f"Sin vehículos con riesgo {table_risk}.")
         else:
             st.dataframe(
                 df_red,
@@ -208,11 +225,11 @@ with tab_gerente:
                 hide_index=True,
                 height=380,
                 column_config={
-                    "plate":                  st.column_config.TextColumn("Placa"),
-                    "make_and_model":         st.column_config.TextColumn("Modelo"),
-                    "center_name":            st.column_config.TextColumn("CEDIS"),
-                    "risk_score":             st.column_config.NumberColumn("Score", format="%.1f"),
-                    "total_maintenance_cost": st.column_config.NumberColumn("Costo MXN", format="$%.0f"),
+                    "plate":         st.column_config.TextColumn("Placa"),
+                    "make_and_model": st.column_config.TextColumn("Modelo"),
+                    "center_name":   st.column_config.TextColumn("CEDIS"),
+                    "risk_score":    st.column_config.NumberColumn("Score", format="%.1f"),
+                    "year":          st.column_config.NumberColumn("Año"),
                 },
             )
 
@@ -309,9 +326,10 @@ with tab_gerente:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_mecanico:
     # ── Session state init ────────────────────────────────────────────────────
-    if "mec_step"      not in st.session_state: st.session_state.mec_step      = 0
-    if "mec_data"      not in st.session_state: st.session_state.mec_data      = {}
-    if "mec_submitted" not in st.session_state: st.session_state.mec_submitted = False
+    if "mec_step"       not in st.session_state: st.session_state.mec_step       = 0
+    if "mec_data"       not in st.session_state: st.session_state.mec_data       = {}
+    if "mec_submitted"  not in st.session_state: st.session_state.mec_submitted  = False
+    if "mec_normalized" not in st.session_state: st.session_state.mec_normalized = None
 
     plates_mec = sorted(df_vehicles["plate"].tolist())
 
@@ -378,9 +396,10 @@ with tab_mecanico:
         if st.session_state.mec_submitted:
             st.success("✅ Servicio registrado correctamente en el sistema.")
             if st.button("Registrar otro servicio", key="mec_reset", type="primary"):
-                st.session_state.mec_step      = 0
-                st.session_state.mec_data      = {}
-                st.session_state.mec_submitted = False
+                st.session_state.mec_step       = 0
+                st.session_state.mec_data       = {}
+                st.session_state.mec_submitted  = False
+                st.session_state.mec_normalized = None
                 st.rerun()
 
         else:
@@ -476,9 +495,45 @@ with tab_mecanico:
                             st.rerun()
 
             else:
-                # All steps done — confirm or edit
+                # All steps done — normalize, then confirm
                 st.progress(1.0)
                 st.caption(f"Paso {len(STEPS)} de {len(STEPS)} — Confirmación")
+
+                d = st.session_state.mec_data
+
+                # Run normalization once; cache result to avoid repeat Bedrock calls on rerun
+                if st.session_state.mec_normalized is None:
+                    log.info(
+                        "Llamando normalizar_descripcion: plate=%s service=%s",
+                        d.get("plate"), d.get("service_type"),
+                    )
+                    st.session_state.mec_normalized = normalizar_descripcion(
+                        d.get("description", ""),
+                        d.get("service_type", ""),
+                    )
+                    log.info(
+                        "Normalización completada: idioma=%s summary=%r",
+                        st.session_state.mec_normalized.get("idioma"),
+                        st.session_state.mec_normalized.get("corrections_summary"),
+                    )
+
+                norm            = st.session_state.mec_normalized
+                desc_final      = norm.get("descripcion_normalizada", d.get("description", ""))
+                idioma          = norm.get("idioma", "unknown")
+                summary         = norm.get("corrections_summary", "")
+                unavailable     = summary == "normalization unavailable"
+                no_changes      = summary == "No changes needed"
+
+                # Show normalization result to the mechanic
+                if unavailable:
+                    st.warning("No se pudo normalizar la descripción (Bedrock no disponible). Se guardará el texto original.")
+                elif not no_changes:
+                    st.info(
+                        f"**Descripción normalizada** (detectado: `{idioma.upper()}`):\n\n"
+                        f"{desc_final}\n\n"
+                        f"_{summary}_"
+                    )
+
                 st.markdown(
                     '<div class="chat-agent">🤖 ¡Perfecto! Todos los datos están listos. '
                     '¿Confirmas el registro de este servicio?</div>',
@@ -487,18 +542,15 @@ with tab_mecanico:
                 col_ok, col_edit = st.columns(2)
                 with col_ok:
                     if st.button("✅ Confirmar registro", type="primary", use_container_width=True):
-                        d = st.session_state.mec_data
                         log.info(
-                            "Submitting maintenance record: plate=%s service_type=%s cost=%s",
-                            d.get("plate"),
-                            d.get("service_type"),
-                            d.get("cost"),
+                            "Guardando servicio: plate=%s service_type=%s cost=%s idioma=%s",
+                            d.get("plate"), d.get("service_type"), d.get("cost"), idioma,
                         )
                         notas = (
-                            f"{d.get('description', '')} | "
-                            f"Refacciones: {', '.join(d.get('parts', []))} | "
-                            f"{float(d.get('hours', 0)):.1f} hrs | "
-                            f"{d.get('mechanic', '')}"
+                            f"PROBLEM: {d.get('service_type', '')}\n"
+                            f"WORK_DONE: {desc_final}\n"
+                            f"PARTS_USED: {', '.join(d.get('parts', []))}\n"
+                            f"LABOR: {float(d.get('hours', 0)):.1f} hrs | TECHNICIAN: {d.get('mechanic', '')}"
                         )
                         from sqlalchemy import text as _text
                         _error_msg = None
@@ -533,20 +585,22 @@ with tab_mecanico:
                                     """),
                                     {"plate": d.get("plate")},
                                 )
-                                _ = result.rowcount  # filas afectadas (0 = ya estaba en FALSE)
-                            st.session_state.mec_submitted = True
-                            log.info("Maintenance record saved successfully for plate=%s", d.get("plate"))
+                                _ = result.rowcount
+                            st.session_state.mec_submitted  = True
+                            st.session_state.mec_normalized = None
+                            log.info("Servicio guardado correctamente: plate=%s", d.get("plate"))
                             get_fleet_data.clear()
                         except Exception as _e:
                             _error_msg = str(_e)
-                            log.exception("Error saving maintenance record for plate=%s", d.get("plate"))
+                            log.exception("Error guardando servicio: plate=%s", d.get("plate"))
                         if _error_msg:
                             st.error(f"Error al guardar en RDS: {_error_msg}")
                         else:
                             st.rerun()
                 with col_edit:
                     if st.button("✏️ Editar respuestas", use_container_width=True):
-                        st.session_state.mec_step = 0
+                        st.session_state.mec_step       = 0
+                        st.session_state.mec_normalized = None
                         st.rerun()
 
     # ── Preview column ────────────────────────────────────────────────────────
