@@ -143,10 +143,10 @@ Vista de mando del taller. Muestra KPIs en tiempo real (flota total, vehículos 
 
 
 ### Pestaña Mecánico
-Flujo guiado de 7 pasos: placa → tipo de servicio → descripción → refacciones → horas → costo → mecánico responsable. Un panel de resumen a la derecha se actualiza en tiempo real. Al confirmar, el registro se guarda en `maintenance_records` y el score del vehículo se actualiza.
+Flujo guiado de 7 pasos: placa → tipo de servicio → descripción → refacciones → horas → costo → mecánico responsable. Un panel de resumen a la derecha se actualiza en tiempo real. Al completar los pasos, **Claude Haiku 4.5** normaliza automáticamente la descripción del mecánico: detecta el idioma, corrige ortografía y traduce al inglés si aplica. El resultado se muestra antes de confirmar. Al confirmar, el registro se guarda en `maintenance_records` con la descripción estandarizada y el score del vehículo se actualiza.
 
 ### Agente Conversacional
-El mecánico puede consultar el estado de una unidad por placa, pedir sugerencias de refacciones para un tipo de servicio o registrar un servicio en lenguaje natural. El agente mantiene contexto durante toda la sesión y responde en español.
+El mecánico puede consultar el estado de una unidad por placa, pedir sugerencias de refacciones para un tipo de servicio o registrar un servicio en lenguaje natural. El agente mantiene contexto durante toda la sesión y responde en español. Cuenta con cinco herramientas: `consultar_estado_vehiculo`, `buscar_historial_vehiculo`, `sugerir_refacciones`, `normalizar_descripcion` y `registrar_servicio`. Usa **Claude Sonnet 4.6** como modelo principal y delega la normalización de texto a **Claude Haiku 4.5**.
 
 ![vista_mecanico](FAQ/dash2.png)
 
@@ -166,7 +166,8 @@ Filtros por placa, tipo de servicio y rango de fechas. Tabla con KPIs de la sele
 | **RDS Read Replica** | `autoshop-db-replica` | Lectura para dashboard y agente |
 | **Amazon SageMaker Studio** | `ml.t3.medium` | Ejecución de notebooks 00-04 |
 | **Amazon ECS Fargate** | `autoshop-service` | Contenedor Streamlit |
-| **Amazon Bedrock** | `claude-sonnet-4-6` | LLM del agente conversacional |
+| **Amazon Bedrock** | `claude-sonnet-4-6` | LLM principal del agente conversacional |
+| **Amazon Bedrock** | `claude-haiku-4-5` | Normalización de descripciones del mecánico |
 | **AWS Secrets Manager** | `autoshop/rds` | Credenciales de base de datos |
 | **AWS CloudFormation** | `autoshop-rds` · `autoshop-ecs-app` | Infraestructura como código |
 
@@ -181,12 +182,13 @@ Escenario: **6 talleres activos, 2 usuarios recurrentes por taller (12 usuarios 
 | RDS PostgreSQL 17 primaria | db.t3.micro, 20 GB gp3, Single-AZ | ~$17 |
 | RDS Read Replica | db.t3.micro, misma región | ~$17 |
 | ECS Fargate (Streamlit) | 0.5 vCPU / 1 GB RAM, 730 h/mes | ~$18 |
-| Amazon Bedrock (Claude Sonnet) | ~2,500 consultas/mes (6 talleres × 2 usuarios) | ~$10 |
+| Amazon Bedrock (Claude Sonnet 4.6) | ~2,500 consultas/mes del agente (6 talleres × 2 usuarios) | ~$10 |
+| Amazon Bedrock (Claude Haiku 4.5) | ~1,320 normalizaciones/mes (10 registros/día × 22 días × 6 talleres) | ~$0.61 |
 | SageMaker Studio | ml.t3.medium, ~20 h/mes (NB00–NB04) | ~$1.20 |
 | Amazon S3 + API requests | ~8 GB Bronze/Silver/Gold + modelos | ~$0.30 |
 | AWS Secrets Manager | 1 secret compartido | $0.40 |
-| **TOTAL estimado** | | **$64 / mes · $768 / año** |
-| **Costo por taller** | Infraestructura compartida | **$6.30 / taller / mes** |
+| **TOTAL estimado** | | **$65 / mes · $775 / año** |
+| **Costo por taller** | Infraestructura compartida | **$6.40 / taller / mes** |
 
 ---
 
