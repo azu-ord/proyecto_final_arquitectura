@@ -209,13 +209,43 @@ Escenario: **6 talleres activos, 2 usuarios recurrentes por taller (12 usuarios 
 ## Estructura del Repositorio
 
 ```
-
-
-
-
-
-
-
+proyecto_final_arquitectura/
+│
+├── agent/                        # Agente conversacional para mecánicos (Strands)
+│   ├── agent.py                  # Construcción del agente (Claude Sonnet 4.6)
+│   ├── normalizer.py             # Normalización de texto vía Bedrock (Claude Haiku 4.5)
+│   ├── prompts.py                # System prompt del agente
+│   └── tools.py                  # Tools: consultar_estado_vehiculo, buscar_historial,
+│                                 #        sugerir_refacciones, registrar_servicio
+│
+├── frontend/                     # Aplicación Streamlit
+│   ├── app.py                    # Punto de entrada de la app
+│   ├── config.py                 # Configuración de la UI
+│   ├── db.py                     # Conexión a RDS Réplica (lecturas del gerente)
+│   └── mock_data.py              # Datos de prueba para desarrollo local
+│
+├── notebooks/                    # Pipeline de datos y modelado
+│   ├── 00_data_generation.ipynb  # Generación y exploración inicial de datos
+│   ├── 01_etl.ipynb              # ETL: CSVs → S3 Bronze → S3 Silver
+│   ├── 02_eda_features.ipynb     # EDA + Feature Engineering → S3 Gold (features/)
+│   ├── 03_model.ipynb            # Entrenamiento XGBoost → S3 Gold (risk_scores/) + models/
+│   └── 04_rds.ipynb              # Carga de Gold/Silver → RDS PostgreSQL
+│
+├── infra/                        # Infraestructura como código (CloudFormation)
+│   ├── ecs-fargate-app.yaml      # Stack de ECS Fargate + ECR
+│   ├── rds-autoshop.yaml         # Stack de RDS Primary + Réplica de lectura
+│   └── build_ecs.sh              # Script de build y push de imagen Docker
+│
+├── data/
+│   └── raw/                      # CSVs originales de Kaggle (no se suben a S3)
+│       ├── logistics_dataset_with_maintenance_required.csv
+│       └── services_and_repair.csv
+│
+├── config.yaml                   # Configuración central (bucket, paths S3, RDS, modelo)
+├── Dockerfile                    # Imagen Docker de la app Streamlit + agente
+├── Makefile                      # Comandos comunes (build, deploy, run local)
+├── requirements.txt              # Dependencias de notebooks
+└── requirements-app.txt          # Dependencias de la app (Streamlit + agente)
 ```
 
 ---
