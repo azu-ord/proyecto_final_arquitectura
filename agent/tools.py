@@ -13,7 +13,12 @@ from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
-from strands import tool
+
+try:
+    from strands import tool
+except ImportError:
+    def tool(fn):  # type: ignore[misc]
+        return fn
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -201,7 +206,12 @@ def registrar_servicio(
     Returns:
         Confirmación del registro con ID de servicio generado.
     """
-    notas = f"{descripcion} | Refacciones: {', '.join(refacciones)} | {horas:.1f} hrs | {mecanico}"
+    notas = (
+        f"PROBLEM: {tipo_servicio}\n"
+        f"WORK_DONE: {descripcion}\n"
+        f"PARTS_USED: {', '.join(refacciones)}\n"
+        f"LABOR: {horas:.1f} hrs | TECHNICIAN: {mecanico}"
+    )
 
     with get_write_engine().begin() as conn:
         result = conn.execute(

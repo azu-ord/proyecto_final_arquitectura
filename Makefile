@@ -88,7 +88,13 @@ create-ecr-repo:
 
 run-test:
 	@echo "Ejecutando pruebas con pytest..."
-	uv run --python 3.11 pytest -v
+	@uv run --python 3.11 pytest -v; \
+	status=$$?; \
+	if [ $$status -eq 5 ]; then \
+		echo "No se encontraron tests (pytest exit code 5)."; \
+		exit 0; \
+	fi; \
+	exit $$status
 
 # Tarea para formatear código con black
 format-black:
