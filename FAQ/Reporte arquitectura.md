@@ -225,15 +225,23 @@ health_score ~ Beta(α=2, β=3)
 
 La distribución Beta(2,3) está sesgada hacia valores bajos (mayor riesgo), lo que produce una distribución realista de condición vehicular donde la mayoría de los vehículos tienen algún grado de deterioro. Este score latente controla la probabilidad de que `Maintenance_Required = 1`, generando correlaciones no lineales naturales entre las variables operativas y la variable objetivo.
 
-## 4.3 Agente conversacional con LLM (Claude Sonnet via Amazon Bedrock)
+## 4.3 Agente conversacional con LLM (Amazon Bedrock — Anthropic)
 
-El sistema incluye un **agente inteligente** para el mecánico, construido con el framework Strands Agents. El agente usa el modelo `claude-sonnet-4-6` de Anthropic disponible en Amazon Bedrock, y tiene acceso a cuatro herramientas:
+El sistema incluye un **agente inteligente** para el mecánico, construido con el framework Strands Agents. Utiliza dos modelos de Anthropic vía Amazon Bedrock con roles distintos:
+
+| Modelo | Uso |
+|---|---|
+| `claude-sonnet-4-6` | Cerebro del agente: razona, decide qué herramientas invocar y responde al mecánico |
+| `claude-haiku-4-5` | Normalización de texto: detecta idioma, corrige ortografía y traduce al inglés antes de guardar en BD |
+
+El agente tiene acceso a cinco herramientas:
 
 | Herramienta | Función |
 |---|---|
 | `consultar_estado_vehiculo(placa)` | Consulta el score de riesgo, nivel y modelo del vehículo desde la réplica RDS |
 | `buscar_historial_vehiculo(placa, n)` | Devuelve los últimos N servicios registrados para una unidad |
 | `sugerir_refacciones(tipo_servicio)` | Sugiere las refacciones más comunes según el tipo de mantenimiento |
+| `normalizar_descripcion(descripcion, tipo_servicio)` | Normaliza la descripción del mecánico antes de registrarla: corrige ortografía, detecta idioma y traduce al inglés si aplica |
 | `registrar_servicio(...)` | Escribe un nuevo registro en `maintenance_records` en RDS primario |
 
 El agente mantiene **memoria de conversación** dentro de la sesión, lo que le permite guiar al mecánico paso a paso sin perder el contexto entre preguntas. El sistema prompt instruye al agente a responder en español, de forma concisa y práctica, adaptado al ritmo de trabajo de un taller.
@@ -312,7 +320,7 @@ El mecánico accede a la **Pestaña Mecánico**. El sistema lo guía con un fluj
 6. Captura el costo total del servicio en MXN.
 7. Selecciona el nombre del mecánico responsable.
 
-Mientras responde cada pregunta, un panel a la derecha muestra en tiempo real el resumen del registro que se está construyendo. Al finalizar, el mecánico confirma el registro.
+Mientras responde cada pregunta, un panel a la derecha muestra en tiempo real el resumen del registro que se está construyendo. Al completar los 7 pasos, el sistema llama automáticamente a **Claude Haiku** para normalizar la descripción: detecta el idioma, corrige errores ortográficos y traduce al inglés si el mecánico escribió en español. El resultado se muestra al mecánico antes de confirmar. Al confirmar, el registro se guarda en `maintenance_records` con la descripción estandarizada.
 
 
 ![](dash2.png)
@@ -341,9 +349,10 @@ El costo anual está calculado para un escenario con  **6 talleres activos, 2 us
 | Credenciales           | Secrets Manager                | 1 secret compartido activo                                  | $0.40         | $4.80       |
 | Pipeline de datos      | SageMaker Studio               | `ml.t3.medium`, ~20 h/mes (NB00–NB04)                       | $1.20         | ~$14.40     |
 | Aplicación web         | ECS Fargate                    | `0.5 vCPU / 1 GB RAM`, 730 h/mes (12 usuarios concurrentes) | $18.00        | ~$216.00    |
-| Modelo de lenguaje     | Amazon Bedrock (Claude Sonnet) | ~2,500 consultas/mes (6 talleres × 2 usuarios)              | $10.00        | ~$120.00    |
-| **Total estimado**     |                                |                                                             | **$64**       | **$768**    |
-Costos aproximados en doláres.
+| Bedrock — Claude Sonnet 4.6 | Amazon Bedrock | ~2,500 consultas/mes del agente (6 talleres × 2 usuarios) | $10.00 | ~$120.00 |
+| Bedrock — Claude Haiku 4.5 | Amazon Bedrock | ~1,320 normalizaciones/mes (10 registros/día × 22 días × 6 talleres) | $0.61 | ~$7.30 |
+| **Total estimado**     |                                |                                                             | **$65**       | **$775**    |
+Costos aproximados en dólares.
 
 ## 7.3 Costo por taller
 
