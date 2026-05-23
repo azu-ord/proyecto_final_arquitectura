@@ -88,7 +88,7 @@ create-ecr-repo:
 
 run-test:
 	@echo "Ejecutando pruebas con pytest..."
-	uv run pytest -v
+	uv run --python 3.11 pytest -v
 
 # Tarea para formatear código con black
 format-black:
