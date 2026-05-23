@@ -7,16 +7,16 @@ Description: >
   Deploy with:
     aws cloudformation deploy \
       --template-file ecs-fargate-app.yaml \
-      --stack-name future-sales-app \
+      --stack-name  auto-repair-app \
       --capabilities CAPABILITY_NAMED_IAM \
       --parameter-overrides \
           VpcId=vpc-xxxxxxxx \
           SubnetIds="subnet-aaa,subnet-bbb,subnet-ccc" \
-          ImageUri=123456789012.dkr.ecr.us-east-1.amazonaws.com/future-sales:latest \
-          DBHostPrimary=itam-forecast-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
-          DBHostReplica=itam-forecast-replica-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
+          ImageUri=123456789012.dkr.ecr.us-east-1.amazonaws.com/auto-repair-shop:latest \
+          DBHostPrimary=itam-autoshop-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
+          DBHostReplica=itam-autoshop-replica-956463123241.cmvsysimg4pq.us-east-1.rds.amazonaws.com \
           RDSSecurityGroupId=sg-xxxxxxxxxxxxxxxxx \
-          SecretArn=arn:aws:secretsmanager:us-east-1:123456789012:secret:itam/rds/1c-forecast/credentials-xxxxxx \
+          SecretArn=arn:aws:secretsmanager:us-east-1:956463123241:secret:itam/rds/auto-repair-shop/credentials-tTDYL5 \
       --region us-east-1
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -38,11 +38,11 @@ Parameters:
     Type: String
     Description: >
       Full ECR image URI.
-      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/future-sales:latest
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/auto-repair-shop:latest
 
   ServiceName:
     Type: String
-    Default: future-sales
+    Default: auto-repair-shop
     MaxLength: 20
     Description: >
       Service name (max 20 characters). Used as a prefix for all resources:
@@ -86,7 +86,7 @@ Parameters:
     Type: String
     Description: >
       Full ARN of the Secrets Manager secret containing RDS credentials.
-      Example: arn:aws:secretsmanager:us-east-1:123456789012:secret:itam/rds/1c-forecast/credentials-xxxxxx
+      Example: arn:aws:secretsmanager:us-east-1:956463123241:secret:itam/rds/auto-repair-shop/credentials-tTDYL5
 
   # FIX 3: Security Group de RDS para acotar egress de ECS
   RDSSecurityGroupId:
@@ -157,8 +157,8 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource:
-                  - arn:aws:s3:::itam-1c-forecast-daniel
-                  - arn:aws:s3:::itam-1c-forecast-daniel/*
+                  - arn:aws:s3:::itam-final-azucena0
+                  - arn:aws:s3:::itam-final-azucena0/*
               - Effect: Allow
                 Action:
                   - athena:StartQueryExecution
@@ -185,6 +185,14 @@ Resources:
                 Action:
                   - cloudwatch:PutMetricData
                 Resource: '*'
+              # Bedrock: permite al agente Strands invocar modelos desde ECS
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - 'arn:aws:bedrock:*::foundation-model/anthropic.*'
+                  - 'arn:aws:bedrock:*:*:inference-profile/us.anthropic.*'
 
   # ---------------------------------------------------------------------------
   # 2. ECS Cluster
@@ -328,13 +336,13 @@ Resources:
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
             - Name: S3_BUCKET
-              Value: itam-1c-forecast-daniel
+              Value: itam-final-azucena0
             - Name: GOLD_DB
-              Value: forecast_gold
+              Value: autoshop_gold
             - Name: ATHENA_OUTPUT
-              Value: s3://itam-1c-forecast-daniel/athena-results/
+              Value: s3://itam-final-azucena0/athena-results/
             - Name: SECRET_NAME
-              Value: itam/rds/1c-forecast/credentials
+              Value: itam/rds/auto-repair-shop/credentials
             # FIX 1: Endpoints de RDS desde parámetros, no hardcodeados
             - Name: DB_HOST_PRIMARY
               Value: !Ref DBHostPrimary

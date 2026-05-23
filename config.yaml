@@ -1,0 +1,125 @@
+main:
+  project_name: "auto-repair-shop"
+  version: "0.1.0"
+  data_sources:
+    - "kaggle/logistics-vehicle-maintenance-history"
+    - "kaggle/vehicle-service-and-repair"
+
+aws:
+  s3_bucket: "itam-final-azucena"
+  region: "us-east-1"
+
+  s3_paths:
+    bronze:      "auto-repair-shop/bronze"
+    silver:      "auto-repair-shop/silver"
+    gold:        "auto-repair-shop/gold"
+    risk_scores: "auto-repair-shop/gold/risk_scores"   
+    models:      "auto-repair-shop/models"
+
+  secret_name: "itam/rds/auto-repair-shop/credentials" 
+
+rds:
+  db_name: "autoshop_db"
+  port: 5432
+  host: "itam-autoshop-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com"         
+  host_replica: "itam-autoshop-replica-150215480648.c63uaymyow80.us-east-1.rds.amazonaws.com" 
+  tables:
+    - vehicles          
+    - service_catalog
+    - maintenance_records
+    - risk_scores
+    - model_run_log
+
+  vehicles_cols:        # columnas que se escriben desde Silver a vehicles
+    - vehicle_id
+    - plate             # generado sintéticamente
+    - make_and_model
+    - year_of_manufacture
+    - vehicle_type
+    - route_info
+    - center_id         # FK a distribution_centers
+
+etl:
+  raw_files:
+    logistics:  "data/raw/logistics_dataset_with_maintenance_required.csv"
+    service:    "data/raw/services_and_repair.csv"
+
+  expected_columns:
+    logistics:
+      - Vehicle_ID
+      - Make_and_Model
+      - Year_of_Manufacture
+      - Vehicle_Type
+      - Usage_Hours
+      - Route_Info
+      - Load_Capacity
+      - Actual_Load
+      - Last_Maintenance_Date
+      - Maintenance_Type
+      - Tire_Pressure
+      - Fuel_Consumption
+      - Battery_Status
+      - Vibration_Levels
+      - Oil_Quality
+      - Brake_Condition
+      - Failure_History
+      - Anomalies_Detected
+      - Maintenance_Required
+      - Weather_Conditions
+      - Road_Conditions
+      - Delivery_Times
+      - center_id
+    service:
+      - CUSTOMER ID
+      - SERVICE HISTORY
+      - COMMON PROBLEM
+      - SOLUTION USED
+      - VEHICAL COMPANY
+
+  validation:
+    usage_hours_min: 0
+    usage_hours_max: 50000
+    tire_pressure_min: 10.0
+    tire_pressure_max: 100.0
+
+modeling:
+  target_col: "Maintenance_Required"
+  random_seed: 123
+  test_size: 0.2
+
+  features:
+    numeric:
+      - Usage_Hours
+      - Tire_Pressure
+      - Fuel_Consumption
+      - Battery_Status
+      - Vibration_Levels
+      - Failure_History
+      - Anomalies_Detected
+      - Delivery_Times
+      - days_since_maintenance   # feature engineering
+      - load_ratio               # Actual_Load / Load_Capacity
+    # Excluidas por data leakage:
+    #   Predictive_Score   
+    #   Maintenance_Cost    
+    #   Downtime_Maintenance 
+    #   Impact_on_Efficiency 
+    categorical:
+      - Vehicle_Type
+      - Route_Info
+      - Oil_Quality
+      - Brake_Condition
+      - Weather_Conditions
+      - Road_Conditions
+
+  xgboost:
+    n_estimators: 60
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    tree_method: "hist"
+
+  accuracy_threshold: 0.75   # mínimo para aprobar el modelo
+
+  model_artifact: "model_xgb.pkl"

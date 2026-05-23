@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY requirements-app.txt .
 RUN pip install --no-cache-dir -r requirements-app.txt
 
+COPY config.yaml .
+COPY agent/ ./agent/
 COPY frontend/ ./frontend/
 COPY .streamlit/ ./.streamlit/
 
