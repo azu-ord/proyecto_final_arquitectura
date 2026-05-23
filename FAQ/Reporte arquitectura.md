@@ -398,3 +398,10 @@ En este proyecto se utilizaron herramientas de IA como apoyo puntual en tareas d
 | Simulación de operaciones CRUD | Simulación de operaciones CRUD en maintenance_records notebook 04 | Claude CLI |
 
 
+# 10. Diagrama de arquitectura general del sistema
+
+![Diagrama Arquitectura de la solución](flota_logix_modelo_arquitecura.drawio.png)
+
+
+
+
